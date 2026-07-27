@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>History Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f5f0eb; color: #3b3228; }
+
+#map { width: 100%; height: 100vh; }
+
+/* Top bar */
+.top-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-bottom: 2px solid #7f8c9a;
+  padding: 10px 20px;
+  display: flex; align-items: baseline; gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.top-bar h1 {
+  font-size: 18px; font-weight: 600; color: #f5f6f7;
+  white-space: nowrap;
+}
+.top-bar .subtitle {
+  font-size: 12px; color: #c7ccd1;
+}
+
+/* Timeline bar */
+.timeline-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-top: 2px solid #7f8c9a;
+  padding: 8px 20px 10px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+}
+.timeline-caption {
+  font-size: 11px; color: #c7ccd1; text-align: center; margin-bottom: 6px;
+}
+.timeline-controls {
+  display: flex; align-items: center; gap: 14px;
+}
+.timeline-play-btn {
+  background: #faf9f7; border: 1px solid #d8d4cc;
+  color: #6b6355; padding: 6px 10px; cursor: pointer;
+  border-radius: 4px; font-size: 13px; flex-shrink: 0;
+  transition: color 0.2s;
+}
+.timeline-play-btn:hover { color: #2c3e50; }
+.timeline-bar input[type="range"] {
+  flex: 1; accent-color: #f5f6f7;
+}
+.timeline-date {
+  font-size: 13px; color: #f5f6f7; white-space: nowrap;
+  min-width: 140px; text-align: right;
+}
+
+/* Side panel */
+.side-panel {
+  position: absolute; top: 52px; right: 0; bottom: 76px; width: 280px;
+  z-index: 999; background: #faf9f7; border-left: 2px solid #d8d4cc;
+  overflow-y: auto; transition: transform 0.3s;
+  padding: 16px;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+}
+.side-panel.hidden { transform: translateX(100%); }
+
+.panel-toggle {
+  position: absolute; top: 62px; right: 280px; z-index: 1000;
+  background: #faf9f7; border: 1px solid #d8d4cc; border-right: none;
+  color: #6b6355; padding: 8px 6px; cursor: pointer;
+  border-radius: 4px 0 0 4px; font-size: 14px; transition: all 0.3s;
+}
+.panel-toggle:hover { color: #2c3e50; }
+.panel-toggle.panel-hidden { right: 0; }
+
+.panel-section { margin-bottom: 20px; }
+.panel-section h3 {
+  font-size: 13px; color: #2c3e50; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 10px;
+  padding-bottom: 4px; border-bottom: 1px solid #d8d4cc;
+}
+
+/* Legend items */
+.legend-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 13px;
+}
+.legend-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+}
+.legend-cross {
+  width: 14px; height: 14px; border-radius: 50%;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+  position: relative;
+  background: #555;
+}
+.legend-cross::before, .legend-cross::after {
+  content: ''; position: absolute; background: #fff;
+}
+.legend-cross::before { left: 50%; top: 20%; bottom: 20%; width: 2px; transform: translateX(-50%); }
+.legend-cross::after { top: 50%; left: 20%; right: 20%; height: 2px; transform: translateY(-50%); }
+
+/* Layer toggles */
+.layer-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; font-size: 13px; cursor: pointer;
+}
+.layer-toggle input { accent-color: #2c3e50; }
+
+/* Hospital marker (divIcon) */
+.hospital-marker {
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  position: relative;
+}
+.hospital-marker::before, .hospital-marker::after {
+  content: ''; position: absolute; background: #fff;
+}
+.hospital-marker::before { left: 50%; top: 22%; bottom: 22%; width: 3px; transform: translateX(-50%); }
+.hospital-marker::after { top: 50%; left: 22%; right: 22%; height: 3px; transform: translateY(-50%); }
+
+/* Family/date chip (divIcon, not a Leaflet tooltip — see markers.js: buildChipMarker) */
+.family-chip-icon {
+  background: none; border: none; pointer-events: none;
+}
+.family-chip-inner {
+  display: inline-block; white-space: nowrap;
+  background: rgba(250, 249, 247, 0.95); border: 1px solid #d8d4cc;
+  border-radius: 4px; padding: 3px 6px; font-size: 11px; line-height: 1.4;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+.family-chip-line strong { color: #2c3e50; }
+.family-chip-range { color: #8b7a66; }
+body.hide-chips .family-chip-icon { display: none; }
+
+/* Custom popups */
+.leaflet-popup-content-wrapper {
+  background: #faf9f7 !important; color: #3b3228 !important;
+  border: 1px solid #d8d4cc !important; border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+.leaflet-popup-tip { background: #faf9f7 !important; }
+.leaflet-popup-content {
+  font-size: 13px; line-height: 1.5; max-width: 320px;
+  max-height: 320px; overflow-y: auto; padding-right: 4px;
+}
+.popup-title {
+  font-size: 15px; font-weight: 600; color: #2c3e50;
+  margin-bottom: 6px;
+}
+.popup-badge {
+  display: inline-block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px;
+  color: #fff; margin-bottom: 8px;
+}
+.popup-families { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.popup-family-tag {
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  color: #fff; font-weight: 500;
+}
+.popup-desc { color: #4a4238; margin: 8px 0; }
+.popup-link {
+  display: block; margin-top: 6px;
+  color: #2563eb; text-decoration: none; font-size: 12px;
+}
+.popup-link:hover { text-decoration: underline; }
+.popup-events { list-style: none; margin: 8px 0 0; padding: 0; }
+.popup-event { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e8e4dc; }
+.popup-event:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.popup-event-date { font-weight: 600; color: #2c3e50; font-size: 12px; }
+.popup-event-campaign { color: #8b7a66; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+.popup-event-text { color: #4a4238; margin-top: 2px; }
+.popup-event-source { color: #8b7a66; font-size: 11px; margin-top: 3px; font-style: italic; }
+
+</style>
+<style media="print">
+@media print {
+  .side-panel, .panel-toggle { display: none !important; }
+  #map { height: 100vh; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+</style>
+<!-- Cloudflare Web Analytics: paste the Cloudflare-provided snippet here, right before the closing head tag -->
+</head>
+<body>
+
+<div class="top-bar">
+  <h1 id="mapTitle">History Map</h1>
+  <span class="subtitle" id="mapSubtitle"></span>
+</div>
+
+<div id="map"></div>
+
+<div class="timeline-bar">
+  <div class="timeline-caption">Drag to see events appear as they happened, or press &#9654; to play through the timeline automatically</div>
+  <div class="timeline-controls">
+    <button class="timeline-play-btn" id="timelinePlayBtn" title="Play through the timeline automatically">&#9654;</button>
+    <input type="range" id="timelineSlider" min="0" max="0" value="0" step="1" title="Drag to travel through time — markers appear as their date is reached">
+    <span class="timeline-date" id="timelineDate"></span>
+  </div>
+</div>
+
+<button class="panel-toggle" onclick="togglePanel()">&#9776;</button>
+
+<div class="side-panel" id="sidePanel">
+  <div class="panel-section">
+    <h3>Tracks</h3>
+    <div id="trackToggles"></div>
+  </div>
+
+  <div class="panel-section">
+    <h3>Legend</h3>
+    <div id="legendItems"></div>
+  </div>
+</div>
+
+<script type="application/json" id="mapData">
+{
+  "meta": {
+    "title": "Henry Matola \u2014 North Africa",
+    "subtitle": "Operation Torch and Tunisia, Nov 1942 \u2013 Jul 1943",
+    "defaultCenter": [
+      35.5,
+      8.5
+    ],
+    "defaultZoom": 6,
+    "generated": "2026-07-26",
+    "source": "henry_matola_timeline.md"
+  },
+  "tracks": {
+    "henry": {
+      "label": "Henry",
+      "color": "#2563eb"
+    },
+    "unit": {
+      "label": "D Company (without Henry)",
+      "color": "#94a3b8"
+    }
+  },
+  "statuses": {
+    "with-unit": {
+      "label": "With D Company",
+      "color": "#2563eb"
+    },
+    "detached": {
+      "label": "Detached from D Company",
+      "color": "#d97706"
+    }
+  },
+  "stops": [
+    {
+      "id": "africa-0",
+      "name": "Safi, French Morocco",
+      "lat": 32.2994,
+      "lng": -9.2372,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 8, 1942",
+          "dateSort": "1942-11-08",
+          "text": "OPERATION TORCH \u2014 Landing at Safi (Henry's combat debut). Sub-Task Force Blackstone reached the transport area 8 miles off Safi at 2330 the night before. At 0430 the destroyers *Bernadou* (Co. K) and *Cole* (Co. I) ran straight into Safi Harbor \u2014 guided by an infra-red lamp a submarine-landed party had set on the jetty \u2014 and put their assault companies ashore under coast-gun and machine-gun fire; the battleship *New York* silenced the 130mm Pt. de la Tour battery by 0445. The 1st Battalion Landing Team (Henry's battalion), commanded by Major Frederick C. Feil, came in on the morning waves: Co. A at 0525, Co. B (Red Beach) 0500, Co. C (Green Beach) 0530, and Company D landed on Blue Beach at 0705 against enemy artillery fire. The 1st Bn advance was held up about an hour by rifle and MG fire from the high ground east of the harbor before clearing its objectives.",
+          "source": "History of the 47th Inf 1940\u201342 (S22) / H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Nov 9, 1942",
+          "dateSort": "1942-11-09",
+          "text": "Marched to positions south of Safi; defensive positions established",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Nov 10\u201311, 1942",
+          "dateSort": "1942-11-10",
+          "text": "Armistice between French and American forces",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Nov 12, 1942",
+          "dateSort": "1942-11-12",
+          "text": "Garrison camp established; training program started",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Nov 16, 1942",
+          "dateSort": "1942-11-16",
+          "text": "First mail received since leaving the States",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Nov 22, 1942",
+          "dateSort": "1942-11-22",
+          "text": "Memorial services for men killed during occupation; General Harmon presided; Purple Hearts and Silver Stars presented",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Dec 4, 1942",
+          "dateSort": "1942-12-04",
+          "text": "Moved to new bivouac in the Athletic Stadium",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Dec 25, 1942",
+          "dateSort": "1942-12-25",
+          "text": "Christmas dinner; church services",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-1",
+      "name": "Safi / Port Lyautey",
+      "lat": 34.2654,
+      "lng": -6.5782,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jan 1, 1943",
+          "dateSort": "1943-01-01",
+          "text": "D Company at Port Lyautey; usual camp duties",
+          "source": "D Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Jan 22, 1943",
+          "dateSort": "1943-01-22",
+          "text": "President Roosevelt visited Port Lyautey. FDR flew to Casablanca for the historic Casablanca Conference with British PM Winston Churchill. He made a motor trip to Port Lyautey accompanied by Allied Force commanders. A combat team review was staged seven miles southwest of Port Lyautey for the visiting President by the 3rd Battalion of the 47th Infantry and the 1st and 2nd Battalions of the 60th Infantry. The Regimental Reconnaissance and Intelligence Platoon served as guard of honor when the President visited the cemetery for American dead at Mehdia, outside Port Lyautey",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Feb 4, 1943",
+          "dateSort": "1943-02-04",
+          "text": "Company B, 9th Medical Battalion; one platoon of Company B, 15th Engineers; and the 84th Field Artillery Battalion attached to the 47th per 9th Infantry Division Special Order No. 28",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-2",
+      "name": "Port Lyautey / Spanish Morocco border",
+      "lat": 34.2611,
+      "lng": -6.5802,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jan 1943",
+          "dateSort": "1943-01-19",
+          "text": "Secret border patrol mission. The 47th received secret orders to patrol the Spanish Moroccan border. General Franco had an estimated 150,000 troops in Spanish Morocco; while Franco pledged neutrality, the Allies patrolled as a precaution. The 1st Battalion (Henry's battalion) was first to get the assignment; after a week along the frontier, relieved by the 3rd Battalion",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Jan 19, 1943",
+          "dateSort": "1943-01-19",
+          "text": "47th Combat Team formally dissolved per 9th Infantry Division Daily Bulletin No. 19",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Jan 29\u201330, 1943",
+          "dateSort": "1943-01-29",
+          "text": "Left Safi by rail (250 miles); French civilians lined streets to bid farewell; regimental band played",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Feb 8\u201311, 1943",
+          "dateSort": "1943-02-08",
+          "text": "D Company loaded equipment on train; departed for new area",
+          "source": "D Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-3",
+      "name": "Tlemcen, Algeria",
+      "lat": 34.8828,
+      "lng": -1.3167,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 6\u20138, 1943",
+          "dateSort": "1943-02-06",
+          "text": "Moved by rail to Tlemcen, Algeria",
+          "source": "H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-4",
+      "name": "Tebessa, Algeria",
+      "lat": 35.4039,
+      "lng": 8.1247,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 26, 1943",
+          "dateSort": "1943-02-26",
+          "text": "Arrived bivouac near Tebessa",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-5",
+      "name": "Kasserine Pass, Tunisia",
+      "lat": 35.172,
+      "lng": 8.7286,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 27, 1943",
+          "dateSort": "1943-02-27",
+          "text": "Moved to defensive positions; relieved elements of 16th Infantry, 1st Infantry Division",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-6",
+      "name": "Kasserine Pass",
+      "lat": 35.1667,
+      "lng": 8.6333,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 3\u201324, 1943",
+          "dateSort": "1943-03-03",
+          "text": "Defensive positions covering entrance to the pass. Barbed wire entanglements constructed. German planes strafed positions on the 12th \u2014 one shot down by small arms fire",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-7",
+      "name": "Kasserine \u2192 Gafsa (34.43\u00b0N, 8.78\u00b0E) \u2192 El Guettar",
+      "lat": 34.425,
+      "lng": 8.7842,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 25\u201326, 1943",
+          "dateSort": "1943-03-25",
+          "text": "Left defensive positions; moved by truck to Gafsa (67 miles); at 2200 moved to assembly area east of El Guettar for attack",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-8",
+      "name": "El Guettar, Tunisia",
+      "lat": 34.3247,
+      "lng": 8.9531,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 28, 1943",
+          "dateSort": "1943-03-28",
+          "text": "BATTLE OF EL GUETTAR BEGINS. 2nd Bn attacked at 0535; Company E, in the lead, caught in cross machine gun fire \u2014 lost 5 officers and 174 enlisted men including CO Capt. Ben K. Humphrey. Company G lost 1 officer and 30 men; Company F lost CO Capt. Francis M. Smith, XO, and 5 men. Capt. Horace M. Spaulding (H Company) and Lt. Crane Campbell (aide to General Eisenhower) also missing with Company E. Lt. Col. Louis Gershenow (2nd Bn CO), 1st Lt. Willard G. Duckworth (Bn S-2), and 2nd Lt. Sidney A. Thal (Bn comms officer) captured. 1st Bn advanced under intense MG, mortar, and artillery fire; Company A reached low hills near Hill 369, suffering many casualties. 1st Lt. Ray I. Inzer appointed commander of H Company, replacing Capt. Spaulding. D Company attacked at dawn. KIA: Pvt Bragg, Pvt Hildreth, Pvt Dietz. WIA: 2nd Lt. Kennelly, Col. Lukas",
+          "source": "D Co./H Co./47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-9",
+      "name": "El Guettar",
+      "lat": 34.35,
+      "lng": 8.9667,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 28 \u2013 Apr 7, 1943",
+          "dateSort": "1943-03-28",
+          "text": "H Company casualties at El Guettar. KIA: PFC Grover E. Jones, PFC Earl J. Nutt (38081478), PFC Michael Kosar. MIA: Capt. Horace M. Spaulding (0-326238), 1st Lt. Charles I. Victor (O-1384437), Sgt. Clifford B. Saxton (32057279), Cpl. Rudolph A. Komerak (32066535), Cpl. Joseph D. Mazzari (31035714), Pvt Robert Lloyd (32003410), Pvt Hillis McGee (15098245). Silver Star Awards for Gallantry in Action, El Guettar, 28 Mar \u2013 7 Apr 43: Sgt. Edward Gold (32057624), Cpl. Domenic E. Padula (31056587), PFC Michael Schork (2003380), PFC Jack Lovett (14123290), PFC Earl J. Nutt (38081478, also KIA), PFC William S. Quincy (36312932), PFC Harold I. Morancy (31045017), Pvt Paul E. [surname illegible] (37207209), Sgt. Harry J. Lee (31056714), Cpl. Harvey N. Painter (38081592). Additionally, 18 aid men were recommended for Silver Stars by company commanders; other Medical Detachment members recommended for Legion of Merit. Medical Detachment suffered 22 casualties out of 126 men (3 KIA, 3 captured, 16 WIA)",
+          "source": "H Co. Casualty Roster / 47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Mar 29, 1943",
+          "dateSort": "1943-03-29",
+          "text": "Fighting continues. D Company WIA evacuated: Gittinger, Valentino, Knoblauch, Long, Grimes. MIA: Cpl Shopa, PFC Garofalo, Pvt Harnaga. KIA: PFC Peter D. Manaresi (32066459), Pvt Jimlo *(name confirmed from the regiment's Africa KIA honor roll and the 1943-history Tunisia casualty list, both of which list \"Manaresi, Peter D., Co. D, Posthumous\")*",
+          "source": "D Co. / Africa KIA Honor Roll (S20)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Mar 30 \u2013 Apr 6, 1943",
+          "dateSort": "1943-03-30",
+          "text": "Sustained combat for 9 days. Heavy artillery daily. D Company suffered additional WIA each day. Relieved by 15th Engineers on Apr 6",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Apr 7, 1943",
+          "dateSort": "1943-04-07",
+          "text": "Enemy withdrew; advanced 8 miles",
+          "source": "D Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-10",
+      "name": "Bou Hebka, near Tebessa, Algeria",
+      "lat": 35.35,
+      "lng": 8.15,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 8, 1943",
+          "dateSort": "1943-04-08",
+          "text": "Moved by truck 70 miles to Bou Hebka; bivouac reached at dusk; pup tents pitched for first time since Kasserine Pass. Men caught first full night's sleep in two weeks",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Apr 9, 1943",
+          "dateSort": "1943-04-09",
+          "text": "Company E reconstituted. 430 enlisted men and 26 lieutenants arrived as replacements. Of this total, 133 enlisted men and 5 lieutenants were formed into a new Company E, replacing Captain Humphrey's ill-fated unit. Only 33 of the original Company E remained \u2014 cooks, drivers, hospital cases, and detached service men. 1st Lt. William Larson transferred from Company A to command the new company",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-12",
+      "name": "Sedjanane, Tunisia",
+      "lat": 37.0564,
+      "lng": 9.2381,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 11\u201312, 1943",
+          "dateSort": "1943-04-11",
+          "text": "Moved by British lorries under strict blackout, 65 miles to defensive positions 4 miles east of Sedjanane; relieved troops of the 138th Brigade, British 1st Army, in the line west of Bald and Green hills. 12 mules received from the British for transporting food, water, and ammunition over the mountainous terrain",
+          "source": "D Co./H Co./47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-11",
+      "name": "Sedjanane area",
+      "lat": 37.0575,
+      "lng": 9.2478,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 15, 1943",
+          "dateSort": "1943-04-15",
+          "text": "22 experienced NCOs transferred from other companies to take command of key positions in the reconstituted Company E",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Apr 16, 1943",
+          "dateSort": "1943-04-16",
+          "text": "Capt. Randall Bryant relieved from Regimental S-2 to become executive officer of the 1st Battalion; succeeded as S-2 by 1st Lt. James H. Cameron",
+          "source": "47th IR History (S17)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Apr 23, 1943",
+          "dateSort": "1943-04-23",
+          "text": "Attack began at 0530; D Company machine guns and mortars fired in support. Moved forward with mules under fire. The S-3 journal records the regiment fighting through the Bald/Green/Sugarloaf hill mass east of Sedjanane, with artillery firing identification smoke onto named hills (Baldy 1000, Green 1030, Sugarloaf 1100) and rations, water, and ammunition carried forward by mule",
+          "source": "D Co./H Co./47th IR S-3 Journal",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-13",
+      "name": "Near Bizerte, Tunisia",
+      "lat": 37.2744,
+      "lng": 9.8739,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "May 4\u20137, 1943",
+          "dateSort": "1943-05-04",
+          "text": "Moved toward Bizerte; D Company in mobile reserve. H Company attacked Hills 208 and 223. May 6: the 1st Battalion (Henry's) made a light advance into Bizerte; \"On\" (Cannon) Company fired on five enemy guns and destroyed two or three; the Germans had planted demolitions and mines in important buildings throughout the city, with heavy artillery firing from across the channel (Goulet du Lac). May 7: Gen. Eddy and staff forward at the CP; the 47th advanced to within ~1 mile east of Bizerte and dug in against a possible counterattack from across Goulet du Lac, supported by the 75th Tank Bn and 9th Div artillery",
+          "source": "D Co./H Co./47th IR S-3 Journal",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "May 8, 1943",
+          "dateSort": "1943-05-08",
+          "text": "Arrived in Bizerte area; defensive positions consolidated. Naval/air activity reported offshore (transports, destroyers, submarines with barrage balloons)",
+          "source": "D Co./H Co./47th IR S-3 Journal",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "May 9, 1943",
+          "dateSort": "1943-05-09",
+          "text": "End of the North African campaign. Per the S-3 journal: \"Genl Harmon in conference with German officers for surrender of troops in area between Tunis and Bizerte.\" Organized Axis resistance in the sector collapsed",
+          "source": "47th IR S-3 Journal",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "May 10, 1943",
+          "dateSort": "1943-05-10",
+          "text": "\"47th Inf relieved from alert\" (0800, S-3 journal). Marched through Bizerte; D Company worked on docks",
+          "source": "D Co./47th IR S-3 Journal",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-14",
+      "name": "Oran, Algeria",
+      "lat": 35.6969,
+      "lng": -0.6331,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 4\u20137, 1943",
+          "dateSort": "1943-06-04",
+          "text": "3-day rest near Oran; swimming, visiting town",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        },
+        {
+          "date": "Jul 28, 1943",
+          "dateSort": "1943-07-28",
+          "text": "Boarded USAT Shawnee",
+          "source": "D Co./H Co.",
+          "campaign": "Voyage to Sicily (Jul\u2013Aug 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-15",
+      "name": "La Senia Airport, Algeria",
+      "lat": 35.6272,
+      "lng": -0.6211,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 14, 1943",
+          "dateSort": "1943-06-14",
+          "text": "King George VI inspected and reviewed assembled troops of the 47th; commended their appearance. Per the regiment's African diary, the 47th furnished a Guard of Honor for the King, and Lt. Gen. Mark Clark (Fifth Army commander) presented the 2nd Battalion to him as *\"the crack battalion of the crack regiment of the crack 9th Infantry Division.\"* The documented review centers on the 2nd Battalion; it is not recorded whether Henry's own 1st Battalion was among the units on parade.",
+          "source": "H Co. / African Diary (S20)",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-16",
+      "name": "Magenta, Algeria",
+      "lat": 35.62,
+      "lng": -0.55,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 16 \u2013 Jul 8, 1943",
+          "dateSort": "1943-06-16",
+          "text": "Vigorous training and physical conditioning",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-17",
+      "name": "Bou Sfer, Algeria",
+      "lat": 35.725,
+      "lng": -0.8639,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 15\u201327, 1943",
+          "dateSort": "1943-07-15",
+          "text": "Camp duties; training",
+          "source": "D Co./H Co.",
+          "campaign": "North Africa \u2014 Operation Torch and Tunisia (Nov 1942 \u2013 May 1943)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "africa-18",
+      "name": "Palermo, Sicily",
+      "lat": 38.1157,
+      "lng": 13.3615,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Aug 1, 1943",
+          "dateSort": "1943-08-01",
+          "text": "Air raid at 0400; disembarked; marched ~10-12 miles to bivouac south of Palermo",
+          "source": "D Co./H Co.",
+          "campaign": "Voyage to Sicily (Jul\u2013Aug 1943)"
+        }
+      ],
+      "status": "with-unit"
+    }
+  ]
+}
+</script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ─── Marker construction ───────────────────────────────────────────
+// Whether a track's stops get their color from `statuses` (a person/subject
+// track with a with-unit/detached-style split) or always use the track's own
+// fixed color (a peer/type track, e.g. "unit", or gary-research's settlement
+// types). Configurable per track (`tracks.<key>.colorByStatus`); falls back
+// to the pre-existing "unit" special case for maps built before this flag
+// existed, so older data needs no changes.
+function trackUsesOwnColor(trackKey, track) {
+  if (track && typeof track.colorByStatus === 'boolean') return !track.colorByStatus;
+  return trackKey === 'unit';
+}
+
+function trackColorsByStatus(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  return !trackUsesOwnColor(stop.track, track);
+}
+
+function resolveStopColor(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  if (!trackColorsByStatus(stop)) {
+    return (track && track.color) || '#888';
+  }
+  const statusKey = stop.status || 'with-unit';
+  const status = DATA.statuses && DATA.statuses[statusKey];
+  if (status) return status.color;
+  return (track && track.color) || '#888';
+}
+
+// Groups a stop's events by an optional per-event `family` tag and returns a
+// small HTML label listing each family's earliest–latest date range (using
+// each event's display-friendly `date` string, not dateSort, so approximate
+// dates like "~1650s" render as written). Returns null if no event carries a
+// `family` tag — callers should skip showing a chip entirely in that case.
+function buildOccupancyChip(stop) {
+  const families = {};
+  (stop.events || []).forEach(ev => {
+    if (!ev.family) return;
+    if (!families[ev.family]) families[ev.family] = { earliest: ev, latest: ev };
+    else {
+      if (ev.dateSort < families[ev.family].earliest.dateSort) families[ev.family].earliest = ev;
+      if (ev.dateSort > families[ev.family].latest.dateSort) families[ev.family].latest = ev;
+    }
+  });
+  const names = Object.keys(families);
+  if (!names.length) return null;
+
+  const lines = names.map(name => {
+    const { earliest, latest } = families[name];
+    const range = earliest === latest ? earliest.date : `${earliest.date}–${latest.date}`;
+    return `<div class="family-chip-line"><strong>${name}</strong> <span class="family-chip-range">(${range})</span></div>`;
+  });
+  return `<div class="family-chip-inner">${lines.join('')}</div>`;
+}
+
+// Non-interactive divIcon marker carrying the chip HTML, positioned just off
+// the stop's own marker. Kept as a separate map layer (not bindTooltip) so it
+// doesn't conflict with the marker's own hover-name tooltip.
+function buildChipMarker(stop, chipHtml) {
+  const icon = L.divIcon({
+    className: 'family-chip-icon',
+    html: chipHtml,
+    iconSize: null,
+    iconAnchor: [-14, 10]
+  });
+  return L.marker([stop.lat, stop.lng], { icon, interactive: false });
+}
+
+function buildCircleMarker(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const radius = (track && track.radius) || 7;
+  const color = resolveStopColor(stop);
+  const marker = L.circleMarker([stop.lat, stop.lng], {
+    radius: radius,
+    fillColor: stop.highlight ? '#b45309' : color,
+    color: stop.highlight ? '#78350f' : '#fff',
+    weight: stop.highlight ? 3 : 2,
+    opacity: 1,
+    fillOpacity: stop.highlight ? 0.9 : 0.85
+  });
+  marker.bindPopup(buildPopup(stop));
+  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -radius] });
+  return marker;
+}
+
+function buildHospitalMarker(stop) {
+  const color = resolveStopColor(stop);
+  const icon = L.divIcon({
+    className: '',
+    html: `<div class="hospital-marker" style="background:${color}; width:18px; height:18px;"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
+  });
+  const marker = L.marker([stop.lat, stop.lng], { icon });
+  marker.bindPopup(buildPopup(stop));
+  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -9] });
+  return marker;
+}
+
+function buildMarkerForStop(stop) {
+  return stop.hospital ? buildHospitalMarker(stop) : buildCircleMarker(stop);
+}
+
+// Faint, non-interactive placeholder for a stop the timeline slider hasn't reached yet.
+// Deliberately has no bindPopup/bindTooltip — only flips to a full marker once revealed.
+function buildGhostMarker(stop) {
+  return L.circleMarker([stop.lat, stop.lng], {
+    radius: 5,
+    fillColor: '#999',
+    color: '#999',
+    weight: 1,
+    opacity: 0.3,
+    fillOpacity: 0.3,
+    interactive: false
+  });
+}
+
+</script>
+<script>
+// ─── Popup construction ─────────────────────────────────────────────
+function buildPopup(stop) {
+  let html = `<div class="popup-title">${stop.name}</div>`;
+
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const statusKey = trackColorsByStatus(stop) ? (stop.status || 'with-unit') : null;
+  const status = statusKey && DATA.statuses && DATA.statuses[statusKey];
+  const badgeColor = resolveStopColor(stop);
+  const badgeLabel = status ? status.label : (track ? track.label : stop.track);
+  html += `<span class="popup-badge" style="background:${badgeColor}">${badgeLabel}</span>`;
+
+  // Flat family tags — for stops with no per-event `family` data yet (see SCHEMA.md
+  // "Family/date chips"); a project with no families concept just omits stop.families.
+  if (stop.families && stop.families.length) {
+    html += '<div class="popup-families">';
+    stop.families.forEach(f => {
+      const color = (DATA.familyColors && DATA.familyColors[f]) || '#666';
+      html += `<span class="popup-family-tag" style="background:${color}">${f}</span>`;
+    });
+    html += '</div>';
+  }
+
+  // Static prose, for stops without a dated events[] yet.
+  if (stop.description) {
+    html += `<div class="popup-desc">${stop.description}</div>`;
+  }
+
+  const events = (stop.events || []).slice().sort((a, b) => {
+    return (a.dateSort || '').localeCompare(b.dateSort || '');
+  });
+
+  if (events.length) {
+    html += '<ul class="popup-events">';
+    events.forEach(ev => {
+      html += '<li class="popup-event">';
+      html += `<div class="popup-event-date">${ev.date}</div>`;
+      if (ev.campaign) html += `<div class="popup-event-campaign">${ev.campaign}</div>`;
+      html += `<div class="popup-event-text">${ev.text}</div>`;
+      if (ev.source) html += `<div class="popup-event-source">${ev.source}</div>`;
+      html += '</li>';
+    });
+    html += '</ul>';
+  }
+
+  // Generic outbound links (e.g. gary-research's per-person worksheet writeups,
+  // or a link back to a related static page like sp-houses.html).
+  if (stop.links && stop.links.length) {
+    stop.links.forEach(link => {
+      html += `<a class="popup-link" href="${link.href}" target="_blank">${link.label}</a>`;
+    });
+  }
+
+  return html;
+}
+
+</script>
+<script>
+// ─── Legend + track toggles ─────────────────────────────────────────
+function buildLegend() {
+  const legendEl = document.getElementById('legendItems');
+  legendEl.innerHTML = '';
+
+  if (DATA.statuses) {
+    Object.values(DATA.statuses).forEach(s => {
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.label}</div>`;
+    });
+  }
+
+  // Tracks that always use their own fixed color (colorByStatus: false, or the
+  // legacy "unit" track) get their own legend line — their color never shows
+  // up via `statuses`. Covers both dad_army's "unit" track and a project like
+  // gary-research's that has several peer tracks and no statuses at all.
+  Object.entries(DATA.tracks || {}).forEach(([key, track]) => {
+    if (trackUsesOwnColor(key, track)) {
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${track.color}"></div>${track.label}</div>`;
+    }
+  });
+
+  if ((DATA.stops || []).some(s => s.hospital)) {
+    legendEl.innerHTML += `<div class="legend-item"><div class="legend-cross" style="background:#555"></div>Hospital stay</div>`;
+  }
+}
+
+function buildTrackToggles() {
+  const el = document.getElementById('trackToggles');
+  el.innerHTML = '';
+  if (!DATA.tracks) return;
+  Object.keys(DATA.tracks).forEach(key => {
+    const t = DATA.tracks[key];
+    const label = document.createElement('label');
+    label.className = 'layer-toggle';
+    label.innerHTML = `<input type="checkbox" checked data-track="${key}"> ${t.label}`;
+    label.querySelector('input').addEventListener('change', (e) => {
+      toggleTrack(key, e.target.checked);
+    });
+    el.appendChild(label);
+  });
+}
+
+</script>
+<script>
+// ─── Data loading + map init ────────────────────────────────────────
+let DATA = null;
+let map = null;
+let allStops = []; // { stop, track, firstDateSort, revealedMarker, ghostMarker, currentlyShownAs }
+const trackVisible = {};
+const state = { currentDateSort: null };
+let playInterval = null;
+
+async function loadData() {
+  // Prefer inline data (works on file://). Fall back to fetch for live editing via http://.
+  const inlineEl = document.getElementById('mapData');
+  const inlineText = inlineEl ? inlineEl.textContent.trim() : '';
+  if (inlineText && inlineText.startsWith('{')) {
+    DATA = JSON.parse(inlineText);
+  } else {
+    const resp = await fetch('data.json');
+    DATA = await resp.json();
+  }
+  buildMap();
+}
+
+// events[] isn't guaranteed sorted by the schema (popup.js sorts defensively too),
+// so compute the earliest date rather than trusting events[0]. A stop can have
+// no events[] at all (e.g. gary-research places with only a static description) —
+// null means "not date-gated," handled in applyVisibility below.
+function stopEarliestDateSort(stop) {
+  if (!stop.events || !stop.events.length) return null;
+  return stop.events.map(e => e.dateSort).sort()[0];
+}
+
+function buildMap() {
+  document.getElementById('mapTitle').textContent = (DATA.meta && DATA.meta.title) || 'History Map';
+  document.getElementById('mapSubtitle').textContent = (DATA.meta && DATA.meta.subtitle) || '';
+
+  const center = (DATA.meta && DATA.meta.defaultCenter) || [0, 0];
+  const zoom = (DATA.meta && DATA.meta.defaultZoom) || 6;
+
+  map = L.map('map', { center, zoom, zoomControl: false });
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  map.panBy([-140, 0], { animate: false });
+
+  (DATA.stops || []).forEach(stop => {
+    const trackKey = stop.track || 'default';
+    if (!(trackKey in trackVisible)) trackVisible[trackKey] = true;
+    const chipHtml = buildOccupancyChip(stop);
+    allStops.push({
+      stop,
+      track: trackKey,
+      firstDateSort: stopEarliestDateSort(stop),
+      revealedMarker: buildMarkerForStop(stop),
+      ghostMarker: buildGhostMarker(stop),
+      chipMarker: chipHtml ? buildChipMarker(stop, chipHtml) : null,
+      currentlyShownAs: null
+    });
+  });
+
+  buildLegend();
+  buildTrackToggles();
+  setupTimeline();
+  setupChipVisibility();
+}
+
+// Chips only show above a configurable zoom (avoids clutter at country/region
+// scale); maps with no family-tagged events never produce chip markers at all,
+// so this is a no-op for them regardless.
+function setupChipVisibility() {
+  const minZoom = DATA.meta && DATA.meta.chipMinZoom;
+  if (typeof minZoom !== 'number') return;
+  const update = () => {
+    document.body.classList.toggle('hide-chips', map.getZoom() < minZoom);
+  };
+  map.on('zoomend', update);
+  update();
+}
+
+// Combines track-toggle visibility with slider position into one of three states
+// per stop: hidden (track off), ghost (not yet reached), revealed (fully shown).
+// A stop with no dated events (firstDateSort === null) is never date-gated —
+// it's revealed whenever its track is visible, same as before the slider existed.
+function applyVisibility() {
+  allStops.forEach(entry => {
+    const wantState = !trackVisible[entry.track] ? null
+      : entry.firstDateSort === null ? 'revealed'
+      : entry.firstDateSort <= state.currentDateSort ? 'revealed'
+      : 'ghost';
+    if (entry.currentlyShownAs === wantState) return;
+    if (entry.currentlyShownAs) {
+      map.removeLayer(entry.currentlyShownAs === 'ghost' ? entry.ghostMarker : entry.revealedMarker);
+      if (entry.currentlyShownAs === 'revealed' && entry.chipMarker) map.removeLayer(entry.chipMarker);
+    }
+    if (wantState) {
+      (wantState === 'ghost' ? entry.ghostMarker : entry.revealedMarker).addTo(map);
+      if (wantState === 'revealed' && entry.chipMarker) entry.chipMarker.addTo(map);
+    }
+    entry.currentlyShownAs = wantState;
+  });
+}
+
+function toggleTrack(trackKey, visible) {
+  trackVisible[trackKey] = visible;
+  applyVisibility();
+}
+
+// Parse YYYY-MM-DD manually and build a local-time Date — new Date(dateSortString)
+// parses as UTC midnight, which can display as the previous day west of Greenwich.
+function formatDateSort(dateSort) {
+  const [y, m, d] = dateSort.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+function setupTimeline() {
+  const uniqueDates = Array.from(new Set(
+    allStops.flatMap(entry => (entry.stop.events || []).map(e => e.dateSort))
+  )).sort();
+
+  const slider = document.getElementById('timelineSlider');
+  const dateLabel = document.getElementById('timelineDate');
+
+  slider.min = 0;
+  slider.max = uniqueDates.length - 1;
+  slider.value = slider.max;
+  state.currentDateSort = uniqueDates[slider.value];
+  dateLabel.textContent = formatDateSort(state.currentDateSort);
+
+  slider.addEventListener('input', () => {
+    state.currentDateSort = uniqueDates[slider.value];
+    dateLabel.textContent = formatDateSort(state.currentDateSort);
+    applyVisibility();
+  });
+
+  document.getElementById('timelinePlayBtn').addEventListener('click', () => togglePlay(slider));
+
+  applyVisibility();
+}
+
+function togglePlay(slider) {
+  const btn = document.getElementById('timelinePlayBtn');
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+    btn.innerHTML = '&#9654;';
+    return;
+  }
+  btn.innerHTML = '&#10074;&#10074;';
+  playInterval = setInterval(() => {
+    const next = Number(slider.value) + 1;
+    if (next > Number(slider.max)) {
+      clearInterval(playInterval);
+      playInterval = null;
+      btn.innerHTML = '&#9654;';
+      return;
+    }
+    slider.value = next;
+    slider.dispatchEvent(new Event('input'));
+  }, 600);
+}
+
+function togglePanel() {
+  const panel = document.getElementById('sidePanel');
+  const btn = document.querySelector('.panel-toggle');
+  panel.classList.toggle('hidden');
+  btn.classList.toggle('panel-hidden');
+  setTimeout(() => map.invalidateSize(), 350);
+}
+
+loadData();
+
+</script>
+</body>
+</html>

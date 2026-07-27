@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>History Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f5f0eb; color: #3b3228; }
+
+#map { width: 100%; height: 100vh; }
+
+/* Top bar */
+.top-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-bottom: 2px solid #7f8c9a;
+  padding: 10px 20px;
+  display: flex; align-items: baseline; gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.top-bar h1 {
+  font-size: 18px; font-weight: 600; color: #f5f6f7;
+  white-space: nowrap;
+}
+.top-bar .subtitle {
+  font-size: 12px; color: #c7ccd1;
+}
+
+/* Timeline bar */
+.timeline-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-top: 2px solid #7f8c9a;
+  padding: 8px 20px 10px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+}
+.timeline-caption {
+  font-size: 11px; color: #c7ccd1; text-align: center; margin-bottom: 6px;
+}
+.timeline-controls {
+  display: flex; align-items: center; gap: 14px;
+}
+.timeline-play-btn {
+  background: #faf9f7; border: 1px solid #d8d4cc;
+  color: #6b6355; padding: 6px 10px; cursor: pointer;
+  border-radius: 4px; font-size: 13px; flex-shrink: 0;
+  transition: color 0.2s;
+}
+.timeline-play-btn:hover { color: #2c3e50; }
+.timeline-bar input[type="range"] {
+  flex: 1; accent-color: #f5f6f7;
+}
+.timeline-date {
+  font-size: 13px; color: #f5f6f7; white-space: nowrap;
+  min-width: 140px; text-align: right;
+}
+
+/* Side panel */
+.side-panel {
+  position: absolute; top: 52px; right: 0; bottom: 76px; width: 280px;
+  z-index: 999; background: #faf9f7; border-left: 2px solid #d8d4cc;
+  overflow-y: auto; transition: transform 0.3s;
+  padding: 16px;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+}
+.side-panel.hidden { transform: translateX(100%); }
+
+.panel-toggle {
+  position: absolute; top: 62px; right: 280px; z-index: 1000;
+  background: #faf9f7; border: 1px solid #d8d4cc; border-right: none;
+  color: #6b6355; padding: 8px 6px; cursor: pointer;
+  border-radius: 4px 0 0 4px; font-size: 14px; transition: all 0.3s;
+}
+.panel-toggle:hover { color: #2c3e50; }
+.panel-toggle.panel-hidden { right: 0; }
+
+.panel-section { margin-bottom: 20px; }
+.panel-section h3 {
+  font-size: 13px; color: #2c3e50; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 10px;
+  padding-bottom: 4px; border-bottom: 1px solid #d8d4cc;
+}
+
+/* Legend items */
+.legend-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 13px;
+}
+.legend-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+}
+.legend-cross {
+  width: 14px; height: 14px; border-radius: 50%;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+  position: relative;
+  background: #555;
+}
+.legend-cross::before, .legend-cross::after {
+  content: ''; position: absolute; background: #fff;
+}
+.legend-cross::before { left: 50%; top: 20%; bottom: 20%; width: 2px; transform: translateX(-50%); }
+.legend-cross::after { top: 50%; left: 20%; right: 20%; height: 2px; transform: translateY(-50%); }
+
+/* Layer toggles */
+.layer-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; font-size: 13px; cursor: pointer;
+}
+.layer-toggle input { accent-color: #2c3e50; }
+
+/* Hospital marker (divIcon) */
+.hospital-marker {
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  position: relative;
+}
+.hospital-marker::before, .hospital-marker::after {
+  content: ''; position: absolute; background: #fff;
+}
+.hospital-marker::before { left: 50%; top: 22%; bottom: 22%; width: 3px; transform: translateX(-50%); }
+.hospital-marker::after { top: 50%; left: 22%; right: 22%; height: 3px; transform: translateY(-50%); }
+
+/* Family/date chip (divIcon, not a Leaflet tooltip — see markers.js: buildChipMarker) */
+.family-chip-icon {
+  background: none; border: none; pointer-events: none;
+}
+.family-chip-inner {
+  display: inline-block; white-space: nowrap;
+  background: rgba(250, 249, 247, 0.95); border: 1px solid #d8d4cc;
+  border-radius: 4px; padding: 3px 6px; font-size: 11px; line-height: 1.4;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+.family-chip-line strong { color: #2c3e50; }
+.family-chip-range { color: #8b7a66; }
+body.hide-chips .family-chip-icon { display: none; }
+
+/* Custom popups */
+.leaflet-popup-content-wrapper {
+  background: #faf9f7 !important; color: #3b3228 !important;
+  border: 1px solid #d8d4cc !important; border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+.leaflet-popup-tip { background: #faf9f7 !important; }
+.leaflet-popup-content {
+  font-size: 13px; line-height: 1.5; max-width: 320px;
+  max-height: 320px; overflow-y: auto; padding-right: 4px;
+}
+.popup-title {
+  font-size: 15px; font-weight: 600; color: #2c3e50;
+  margin-bottom: 6px;
+}
+.popup-badge {
+  display: inline-block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px;
+  color: #fff; margin-bottom: 8px;
+}
+.popup-families { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.popup-family-tag {
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  color: #fff; font-weight: 500;
+}
+.popup-desc { color: #4a4238; margin: 8px 0; }
+.popup-link {
+  display: block; margin-top: 6px;
+  color: #2563eb; text-decoration: none; font-size: 12px;
+}
+.popup-link:hover { text-decoration: underline; }
+.popup-events { list-style: none; margin: 8px 0 0; padding: 0; }
+.popup-event { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e8e4dc; }
+.popup-event:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.popup-event-date { font-weight: 600; color: #2c3e50; font-size: 12px; }
+.popup-event-campaign { color: #8b7a66; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+.popup-event-text { color: #4a4238; margin-top: 2px; }
+.popup-event-source { color: #8b7a66; font-size: 11px; margin-top: 3px; font-style: italic; }
+
+</style>
+<style media="print">
+@media print {
+  .side-panel, .panel-toggle { display: none !important; }
+  #map { height: 100vh; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+</style>
+<!-- Cloudflare Web Analytics: paste the Cloudflare-provided snippet here, right before the closing head tag -->
+</head>
+<body>
+
+<div class="top-bar">
+  <h1 id="mapTitle">History Map</h1>
+  <span class="subtitle" id="mapSubtitle"></span>
+</div>
+
+<div id="map"></div>
+
+<div class="timeline-bar">
+  <div class="timeline-caption">Drag to see events appear as they happened, or press &#9654; to play through the timeline automatically</div>
+  <div class="timeline-controls">
+    <button class="timeline-play-btn" id="timelinePlayBtn" title="Play through the timeline automatically">&#9654;</button>
+    <input type="range" id="timelineSlider" min="0" max="0" value="0" step="1" title="Drag to travel through time — markers appear as their date is reached">
+    <span class="timeline-date" id="timelineDate"></span>
+  </div>
+</div>
+
+<button class="panel-toggle" onclick="togglePanel()">&#9776;</button>
+
+<div class="side-panel" id="sidePanel">
+  <div class="panel-section">
+    <h3>Tracks</h3>
+    <div id="trackToggles"></div>
+  </div>
+
+  <div class="panel-section">
+    <h3>Legend</h3>
+    <div id="legendItems"></div>
+  </div>
+</div>
+
+<script type="application/json" id="mapData">
+{
+  "meta": {
+    "title": "Henry Matola \u2014 Stateside",
+    "subtitle": "Fort Bragg, NC, Oct 1940 \u2013 Oct 1942",
+    "defaultCenter": [
+      35.14,
+      -79.0
+    ],
+    "defaultZoom": 9,
+    "generated": "2026-07-26",
+    "source": "henry_matola_timeline.md"
+  },
+  "tracks": {
+    "henry": {
+      "label": "Henry",
+      "color": "#2563eb"
+    },
+    "unit": {
+      "label": "D Company (without Henry)",
+      "color": "#94a3b8"
+    }
+  },
+  "statuses": {
+    "with-unit": {
+      "label": "With D Company",
+      "color": "#2563eb"
+    },
+    "detached": {
+      "label": "Detached from D Company",
+      "color": "#d97706"
+    }
+  },
+  "stops": [
+    {
+      "id": "stateside-0",
+      "name": "Fort Bragg, NC",
+      "lat": 35.139,
+      "lng": -79.0064,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Aug 1, 1940",
+          "dateSort": "1940-08-01",
+          "text": "47th Infantry Regiment reactivated",
+          "source": "Henry Military Service.docx",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Oct 21, 1940",
+          "dateSort": "1940-10-21",
+          "text": "Henry and George transferred to D Company, 47th Infantry from Hq and MP Co, 9th Div",
+          "source": "Oct 1940 Roster",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Oct 31, 1940",
+          "dateSort": "1940-10-31",
+          "text": "First monthly roster: Henry listed as Private, D Company, 47th Infantry. Company commanded by Capt. Madison C. Schepps. 1st Sgt: William M. Gatewood",
+          "source": "OMPF Oct 1940 Roster",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Nov 1940",
+          "dateSort": "1940-11-19",
+          "text": "Basic training began. Henry's personal photographs (Batch 1, B1-01 through B1-30) document life in the pyramid tent camp \u2014 canvas tents pitched in sandy pine forests, cots, field stoves, woodpile details. Henry confirmed in B1-01 (Class A uniform, garrison cap). Training photographs show the tools of basic infantry training in this period",
+          "source": "OMPF Questionnaire / Henry Research NARA.docx / Photos B1 series (S16)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Nov 30, 1940",
+          "dateSort": "1940-11-30",
+          "text": "Monthly roster: Henry listed as Private, D Company. George Kysilka also present",
+          "source": "OMPF Nov 1940 Roster (S12, p.17\u201318)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Dec 31, 1940",
+          "dateSort": "1940-12-31",
+          "text": "Monthly roster: Henry listed as Private, D Company",
+          "source": "OMPF Dec 1940 Roster (S12, p.19\u201320)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "1941",
+          "dateSort": "1941-01-01",
+          "text": "D Company trained with M1917A1 .30 cal water-cooled machine guns (B2-07/08), M3 half-tracks (B2-11/12), Harley-Davidson WLA motorcycles (B2-09/15), and M1903 Springfield rifles (B2-17/24/25/27/34/58). Equipment consistent with D Company's role as 1st Battalion heavy weapons company. Photo B2-47 shows 9th Infantry Division Octofoil insignia and company guidon painted on barracks building. Photo B2-10 shows regimental truck motor pool with \"47\" bumper markings",
+          "source": "Photos B2 series (S16)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Winter 1941\u20131942",
+          "dateSort": "1941-01-01",
+          "text": "Heavy snowfall documented in personal photographs \u2014 motor pool vehicles (half-tracks, trucks, jeeps) buried under snow drifts; soldiers in long overcoats. Fort Bragg rarely receives heavy snow; the men photographed it extensively (7 winter photos survive). Confidence: Possible \u2014 photos are Batch 2 (barracks era); could be winter 1940\u201341, but permanent barracks and motor pool equipment suggest 1941\u201342",
+          "source": "Photos B2-30/31/32/37/39/46/48 (S16)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Jan 3, 1941",
+          "dateSort": "1941-01-03",
+          "text": "Regiment moved from the Tent City pyramidal-tent camp into permanent two-story wooden barracks (date per the *RAIDERS* regimental history). Henry's photos shift from tent-camp subjects (Batch 1) to barracks area, company street, and motor pool (Batch 2), corroborating the transition",
+          "source": "RAIDERS regtl history (S20) / Photos B1 vs B2 series (S16)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Jan 31, 1941",
+          "dateSort": "1941-01-31",
+          "text": "Monthly roster: Henry listed, D Company. 1st Sgt. Gatewood still commanding NCO",
+          "source": "OMPF Jan 1941 Roster (S12, p.21\u201322)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Feb 28, 1941",
+          "dateSort": "1941-02-28",
+          "text": "Henry promoted from Private to Private First Class (PFC). The Jan 31, 1941 roster still lists him as PVT; the Feb 28, 1941 roster lists him as PFC, with a status-code date of 13 Feb 1941 \u2014 the same date appears against several other D Company men promoted the same day (Keener, Keller, Madden, Mack, Nichols), consistent with a batch promotion after completing initial training, roughly 4 months after enlistment (Oct 13, 1940). No promotion order is cited anywhere in the file \u2014 checked the roster form itself (WD AGO Form 305, a personnel-accounting card that records the change via a status code + date, not an order number) and full-text-searched all 201 pages for \"Special Order\"/\"S.O. No.\" near this date: no hits. This differs from the CIB and Drivers & Mechanics Badge, which were announced by specific numbered General Orders (Box 6495) \u2014 routine PFC promotions for privates in this peacetime-forming unit were likely authorized under the company commander's blanket promotion authority rather than a numbered order, or the order simply isn't part of this reconstruction",
+          "source": "OMPF Feb 1941 Roster (S12, p.23\u201324), verified 2026-07-06 by direct page image review (rosters Oct 1940\u2013Feb 1941 checked page-by-page)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Mar 31, 1941",
+          "dateSort": "1941-03-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Mar 1941 Roster (S12, p.25\u201326)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Jul 31, 1941",
+          "dateSort": "1941-07-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Jul 1941 Roster (S12, p.32\u201333)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Nov 30, 1941",
+          "dateSort": "1941-11-30",
+          "text": "Monthly roster: Henry listed, D Company. Unit returned to Fort Bragg from Carolina Maneuvers",
+          "source": "OMPF Nov 1941 Roster (S12, p.40\u201341)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Dec 7, 1941",
+          "dateSort": "1941-12-07",
+          "text": "Japanese attack on Pearl Harbor. United States enters World War II. Henry had been in the Army for 14 months",
+          "source": "Historical record",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Dec 31, 1941",
+          "dateSort": "1941-12-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Dec 1941 Roster (S12, p.42\u201343)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Jan 31, 1942",
+          "dateSort": "1942-01-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Jan 1942 Roster (S12, p.44\u201345)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Feb 28, 1942",
+          "dateSort": "1942-02-28",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Feb 1942 Roster (S12, p.46\u201347)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Mar 31, 1942",
+          "dateSort": "1942-03-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Mar 1942 Roster (S12, p.48\u201349)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Apr 30, 1942",
+          "dateSort": "1942-04-30",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Apr 1942 Roster (S12, p.50\u201351)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "May 31, 1942",
+          "dateSort": "1942-05-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF May 1942 Roster (S12, p.52\u201353)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Jun 30, 1942",
+          "dateSort": "1942-06-30",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Jun 1942 Roster (S12, p.54\u201355)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Jul 31, 1942",
+          "dateSort": "1942-07-31",
+          "text": "Monthly roster: Henry listed, D Company",
+          "source": "OMPF Jul 1942 Roster (S12, p.56\u201357)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Aug 1, 1942",
+          "dateSort": "1942-08-01",
+          "text": "Per Henry Military Service.docx: \"Left Ft. Bragg.\" Note: H Company records show the unit still at Fort Bragg through Oct 14, 1942, and the Aug 31 monthly roster (S12) confirms the unit present at Fort Bragg. This date may refer to a temporary movement or may be inaccurate (S7 is an authored source with known date conflicts)",
+          "source": "Henry Military Service.docx",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Aug 31, 1942",
+          "dateSort": "1942-08-31",
+          "text": "Monthly roster: Henry listed, D Company. George Kysilka also confirmed present. Note: Henry Military Service.docx (S7) claims \"Left Ft. Bragg\" on Aug 1 \u2014 this roster proves the unit was still at Fort Bragg at end of August",
+          "source": "OMPF Aug 1942 Roster (S12, p.58\u201359)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Sep 26, 1942",
+          "dateSort": "1942-09-26",
+          "text": "Moved from barracks to staging area on Chicken Road; pitched camp",
+          "source": "H Co.",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Sep 26 \u2013 Oct 12, 1942",
+          "dateSort": "1942-09-26",
+          "text": "Vigorous training and physical conditioning in preparation for departure. Replacements arriving from Camp Wheeler, GA",
+          "source": "H Co.",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Oct 13, 1942",
+          "dateSort": "1942-10-13",
+          "text": "Final physical examinations; equipment checked",
+          "source": "H Co.",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Oct 14, 1942",
+          "dateSort": "1942-10-14",
+          "text": "Left bivouac at 2100 by motor convoy; boarded train at midnight",
+          "source": "H Co.",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "stateside-1",
+      "name": "Fort Hayes, Columbus, OH",
+      "lat": 39.9612,
+      "lng": -82.9988,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Oct 13, 1940",
+          "dateSort": "1940-10-13",
+          "text": "Henry enlisted. SN 15013984. George Kysilka (b. Apr 7, 1923, Cleveland, OH; resident of Cuyahoga County) enlisted same day, SN 15013985. Both initially assigned to Hq and MP Co, 9th Division",
+          "source": "OMPF Certification of Military Service / Oct 1940 Roster / George Kysilka Army Enlistment Record",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "stateside-2",
+      "name": "Maneuver Area, Chester, SC",
+      "lat": 34.6987,
+      "lng": -81.1782,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 30, 1941",
+          "dateSort": "1941-09-30",
+          "text": "Carolina Maneuvers. Monthly roster filed from \"Maneuver Area, Chester, S.C.\" \u2014 confirms D Company participated in the GHQ-directed Carolina Maneuvers (the largest peacetime military exercise in U.S. history, involving ~400,000 troops). Henry present on roster",
+          "source": "OMPF Sep 1941 Roster (S12, p.36\u201337) / Henry Military Service.docx (S7)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        },
+        {
+          "date": "Oct 1941",
+          "dateSort": "1941-10-19",
+          "text": "Carolina Maneuvers continued. October roster also filed from Chester, SC maneuver area",
+          "source": "OMPF Oct 1941 Roster (S12, p.38\u201339) / Henry Military Service.docx (S7)",
+          "campaign": "Stateside \u2014 Fort Bragg, NC (1940\u20131942)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "stateside-3",
+      "name": "Newport News, VA",
+      "lat": 36.9787,
+      "lng": -76.428,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Oct 15, 1942",
+          "dateSort": "1942-10-15",
+          "text": "Arrived by rail; boarded USS Dorothea L. Dix at 1500",
+          "source": "H Co.",
+          "campaign": "Voyage to North Africa (Oct\u2013Nov 1942)"
+        },
+        {
+          "date": "Oct 16, 1942",
+          "dateSort": "1942-10-16",
+          "text": "Sailed at 1430",
+          "source": "H Co.",
+          "campaign": "Voyage to North Africa (Oct\u2013Nov 1942)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "stateside-4",
+      "name": "Chesapeake Bay",
+      "lat": 37.0,
+      "lng": -76.0,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Oct 18\u201319, 1942",
+          "dateSort": "1942-10-18",
+          "text": "Practice landing operations",
+          "source": "H Co.",
+          "campaign": "Voyage to North Africa (Oct\u2013Nov 1942)"
+        },
+        {
+          "date": "Oct 23, 1942",
+          "dateSort": "1942-10-23",
+          "text": "Sailed for Safi, French Morocco; troops notified of destination",
+          "source": "H Co.",
+          "campaign": "Voyage to North Africa (Oct\u2013Nov 1942)"
+        }
+      ],
+      "status": "with-unit"
+    }
+  ]
+}
+</script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ─── Marker construction ───────────────────────────────────────────
+// Whether a track's stops get their color from `statuses` (a person/subject
+// track with a with-unit/detached-style split) or always use the track's own
+// fixed color (a peer/type track, e.g. "unit", or gary-research's settlement
+// types). Configurable per track (`tracks.<key>.colorByStatus`); falls back
+// to the pre-existing "unit" special case for maps built before this flag
+// existed, so older data needs no changes.
+function trackUsesOwnColor(trackKey, track) {
+  if (track && typeof track.colorByStatus === 'boolean') return !track.colorByStatus;
+  return trackKey === 'unit';
+}
+
+function trackColorsByStatus(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  return !trackUsesOwnColor(stop.track, track);
+}
+
+function resolveStopColor(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  if (!trackColorsByStatus(stop)) {
+    return (track && track.color) || '#888';
+  }
+  const statusKey = stop.status || 'with-unit';
+  const status = DATA.statuses && DATA.statuses[statusKey];
+  if (status) return status.color;
+  return (track && track.color) || '#888';
+}
+
+// Groups a stop's events by an optional per-event `family` tag and returns a
+// small HTML label listing each family's earliest–latest date range (using
+// each event's display-friendly `date` string, not dateSort, so approximate
+// dates like "~1650s" render as written). Returns null if no event carries a
+// `family` tag — callers should skip showing a chip entirely in that case.
+function buildOccupancyChip(stop) {
+  const families = {};
+  (stop.events || []).forEach(ev => {
+    if (!ev.family) return;
+    if (!families[ev.family]) families[ev.family] = { earliest: ev, latest: ev };
+    else {
+      if (ev.dateSort < families[ev.family].earliest.dateSort) families[ev.family].earliest = ev;
+      if (ev.dateSort > families[ev.family].latest.dateSort) families[ev.family].latest = ev;
+    }
+  });
+  const names = Object.keys(families);
+  if (!names.length) return null;
+
+  const lines = names.map(name => {
+    const { earliest, latest } = families[name];
+    const range = earliest === latest ? earliest.date : `${earliest.date}–${latest.date}`;
+    return `<div class="family-chip-line"><strong>${name}</strong> <span class="family-chip-range">(${range})</span></div>`;
+  });
+  return `<div class="family-chip-inner">${lines.join('')}</div>`;
+}
+
+// Non-interactive divIcon marker carrying the chip HTML, positioned just off
+// the stop's own marker. Kept as a separate map layer (not bindTooltip) so it
+// doesn't conflict with the marker's own hover-name tooltip.
+function buildChipMarker(stop, chipHtml) {
+  const icon = L.divIcon({
+    className: 'family-chip-icon',
+    html: chipHtml,
+    iconSize: null,
+    iconAnchor: [-14, 10]
+  });
+  return L.marker([stop.lat, stop.lng], { icon, interactive: false });
+}
+
+function buildCircleMarker(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const radius = (track && track.radius) || 7;
+  const color = resolveStopColor(stop);
+  const marker = L.circleMarker([stop.lat, stop.lng], {
+    radius: radius,
+    fillColor: stop.highlight ? '#b45309' : color,
+    color: stop.highlight ? '#78350f' : '#fff',
+    weight: stop.highlight ? 3 : 2,
+    opacity: 1,
+    fillOpacity: stop.highlight ? 0.9 : 0.85
+  });
+  marker.bindPopup(buildPopup(stop));
+  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -radius] });
+  return marker;
+}
+
+function buildHospitalMarker(stop) {
+  const color = resolveStopColor(stop);
+  const icon = L.divIcon({
+    className: '',
+    html: `<div class="hospital-marker" style="background:${color}; width:18px; height:18px;"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
+  });
+  const marker = L.marker([stop.lat, stop.lng], { icon });
+  marker.bindPopup(buildPopup(stop));
+  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -9] });
+  return marker;
+}
+
+function buildMarkerForStop(stop) {
+  return stop.hospital ? buildHospitalMarker(stop) : buildCircleMarker(stop);
+}
+
+// Faint, non-interactive placeholder for a stop the timeline slider hasn't reached yet.
+// Deliberately has no bindPopup/bindTooltip — only flips to a full marker once revealed.
+function buildGhostMarker(stop) {
+  return L.circleMarker([stop.lat, stop.lng], {
+    radius: 5,
+    fillColor: '#999',
+    color: '#999',
+    weight: 1,
+    opacity: 0.3,
+    fillOpacity: 0.3,
+    interactive: false
+  });
+}
+
+</script>
+<script>
+// ─── Popup construction ─────────────────────────────────────────────
+function buildPopup(stop) {
+  let html = `<div class="popup-title">${stop.name}</div>`;
+
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const statusKey = trackColorsByStatus(stop) ? (stop.status || 'with-unit') : null;
+  const status = statusKey && DATA.statuses && DATA.statuses[statusKey];
+  const badgeColor = resolveStopColor(stop);
+  const badgeLabel = status ? status.label : (track ? track.label : stop.track);
+  html += `<span class="popup-badge" style="background:${badgeColor}">${badgeLabel}</span>`;
+
+  // Flat family tags — for stops with no per-event `family` data yet (see SCHEMA.md
+  // "Family/date chips"); a project with no families concept just omits stop.families.
+  if (stop.families && stop.families.length) {
+    html += '<div class="popup-families">';
+    stop.families.forEach(f => {
+      const color = (DATA.familyColors && DATA.familyColors[f]) || '#666';
+      html += `<span class="popup-family-tag" style="background:${color}">${f}</span>`;
+    });
+    html += '</div>';
+  }
+
+  // Static prose, for stops without a dated events[] yet.
+  if (stop.description) {
+    html += `<div class="popup-desc">${stop.description}</div>`;
+  }
+
+  const events = (stop.events || []).slice().sort((a, b) => {
+    return (a.dateSort || '').localeCompare(b.dateSort || '');
+  });
+
+  if (events.length) {
+    html += '<ul class="popup-events">';
+    events.forEach(ev => {
+      html += '<li class="popup-event">';
+      html += `<div class="popup-event-date">${ev.date}</div>`;
+      if (ev.campaign) html += `<div class="popup-event-campaign">${ev.campaign}</div>`;
+      html += `<div class="popup-event-text">${ev.text}</div>`;
+      if (ev.source) html += `<div class="popup-event-source">${ev.source}</div>`;
+      html += '</li>';
+    });
+    html += '</ul>';
+  }
+
+  // Generic outbound links (e.g. gary-research's per-person worksheet writeups,
+  // or a link back to a related static page like sp-houses.html).
+  if (stop.links && stop.links.length) {
+    stop.links.forEach(link => {
+      html += `<a class="popup-link" href="${link.href}" target="_blank">${link.label}</a>`;
+    });
+  }
+
+  return html;
+}
+
+</script>
+<script>
+// ─── Legend + track toggles ─────────────────────────────────────────
+function buildLegend() {
+  const legendEl = document.getElementById('legendItems');
+  legendEl.innerHTML = '';
+
+  if (DATA.statuses) {
+    Object.values(DATA.statuses).forEach(s => {
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.label}</div>`;
+    });
+  }
+
+  // Tracks that always use their own fixed color (colorByStatus: false, or the
+  // legacy "unit" track) get their own legend line — their color never shows
+  // up via `statuses`. Covers both dad_army's "unit" track and a project like
+  // gary-research's that has several peer tracks and no statuses at all.
+  Object.entries(DATA.tracks || {}).forEach(([key, track]) => {
+    if (trackUsesOwnColor(key, track)) {
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${track.color}"></div>${track.label}</div>`;
+    }
+  });
+
+  if ((DATA.stops || []).some(s => s.hospital)) {
+    legendEl.innerHTML += `<div class="legend-item"><div class="legend-cross" style="background:#555"></div>Hospital stay</div>`;
+  }
+}
+
+function buildTrackToggles() {
+  const el = document.getElementById('trackToggles');
+  el.innerHTML = '';
+  if (!DATA.tracks) return;
+  Object.keys(DATA.tracks).forEach(key => {
+    const t = DATA.tracks[key];
+    const label = document.createElement('label');
+    label.className = 'layer-toggle';
+    label.innerHTML = `<input type="checkbox" checked data-track="${key}"> ${t.label}`;
+    label.querySelector('input').addEventListener('change', (e) => {
+      toggleTrack(key, e.target.checked);
+    });
+    el.appendChild(label);
+  });
+}
+
+</script>
+<script>
+// ─── Data loading + map init ────────────────────────────────────────
+let DATA = null;
+let map = null;
+let allStops = []; // { stop, track, firstDateSort, revealedMarker, ghostMarker, currentlyShownAs }
+const trackVisible = {};
+const state = { currentDateSort: null };
+let playInterval = null;
+
+async function loadData() {
+  // Prefer inline data (works on file://). Fall back to fetch for live editing via http://.
+  const inlineEl = document.getElementById('mapData');
+  const inlineText = inlineEl ? inlineEl.textContent.trim() : '';
+  if (inlineText && inlineText.startsWith('{')) {
+    DATA = JSON.parse(inlineText);
+  } else {
+    const resp = await fetch('data.json');
+    DATA = await resp.json();
+  }
+  buildMap();
+}
+
+// events[] isn't guaranteed sorted by the schema (popup.js sorts defensively too),
+// so compute the earliest date rather than trusting events[0]. A stop can have
+// no events[] at all (e.g. gary-research places with only a static description) —
+// null means "not date-gated," handled in applyVisibility below.
+function stopEarliestDateSort(stop) {
+  if (!stop.events || !stop.events.length) return null;
+  return stop.events.map(e => e.dateSort).sort()[0];
+}
+
+function buildMap() {
+  document.getElementById('mapTitle').textContent = (DATA.meta && DATA.meta.title) || 'History Map';
+  document.getElementById('mapSubtitle').textContent = (DATA.meta && DATA.meta.subtitle) || '';
+
+  const center = (DATA.meta && DATA.meta.defaultCenter) || [0, 0];
+  const zoom = (DATA.meta && DATA.meta.defaultZoom) || 6;
+
+  map = L.map('map', { center, zoom, zoomControl: false });
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  map.panBy([-140, 0], { animate: false });
+
+  (DATA.stops || []).forEach(stop => {
+    const trackKey = stop.track || 'default';
+    if (!(trackKey in trackVisible)) trackVisible[trackKey] = true;
+    const chipHtml = buildOccupancyChip(stop);
+    allStops.push({
+      stop,
+      track: trackKey,
+      firstDateSort: stopEarliestDateSort(stop),
+      revealedMarker: buildMarkerForStop(stop),
+      ghostMarker: buildGhostMarker(stop),
+      chipMarker: chipHtml ? buildChipMarker(stop, chipHtml) : null,
+      currentlyShownAs: null
+    });
+  });
+
+  buildLegend();
+  buildTrackToggles();
+  setupTimeline();
+  setupChipVisibility();
+}
+
+// Chips only show above a configurable zoom (avoids clutter at country/region
+// scale); maps with no family-tagged events never produce chip markers at all,
+// so this is a no-op for them regardless.
+function setupChipVisibility() {
+  const minZoom = DATA.meta && DATA.meta.chipMinZoom;
+  if (typeof minZoom !== 'number') return;
+  const update = () => {
+    document.body.classList.toggle('hide-chips', map.getZoom() < minZoom);
+  };
+  map.on('zoomend', update);
+  update();
+}
+
+// Combines track-toggle visibility with slider position into one of three states
+// per stop: hidden (track off), ghost (not yet reached), revealed (fully shown).
+// A stop with no dated events (firstDateSort === null) is never date-gated —
+// it's revealed whenever its track is visible, same as before the slider existed.
+function applyVisibility() {
+  allStops.forEach(entry => {
+    const wantState = !trackVisible[entry.track] ? null
+      : entry.firstDateSort === null ? 'revealed'
+      : entry.firstDateSort <= state.currentDateSort ? 'revealed'
+      : 'ghost';
+    if (entry.currentlyShownAs === wantState) return;
+    if (entry.currentlyShownAs) {
+      map.removeLayer(entry.currentlyShownAs === 'ghost' ? entry.ghostMarker : entry.revealedMarker);
+      if (entry.currentlyShownAs === 'revealed' && entry.chipMarker) map.removeLayer(entry.chipMarker);
+    }
+    if (wantState) {
+      (wantState === 'ghost' ? entry.ghostMarker : entry.revealedMarker).addTo(map);
+      if (wantState === 'revealed' && entry.chipMarker) entry.chipMarker.addTo(map);
+    }
+    entry.currentlyShownAs = wantState;
+  });
+}
+
+function toggleTrack(trackKey, visible) {
+  trackVisible[trackKey] = visible;
+  applyVisibility();
+}
+
+// Parse YYYY-MM-DD manually and build a local-time Date — new Date(dateSortString)
+// parses as UTC midnight, which can display as the previous day west of Greenwich.
+function formatDateSort(dateSort) {
+  const [y, m, d] = dateSort.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+function setupTimeline() {
+  const uniqueDates = Array.from(new Set(
+    allStops.flatMap(entry => (entry.stop.events || []).map(e => e.dateSort))
+  )).sort();
+
+  const slider = document.getElementById('timelineSlider');
+  const dateLabel = document.getElementById('timelineDate');
+
+  slider.min = 0;
+  slider.max = uniqueDates.length - 1;
+  slider.value = slider.max;
+  state.currentDateSort = uniqueDates[slider.value];
+  dateLabel.textContent = formatDateSort(state.currentDateSort);
+
+  slider.addEventListener('input', () => {
+    state.currentDateSort = uniqueDates[slider.value];
+    dateLabel.textContent = formatDateSort(state.currentDateSort);
+    applyVisibility();
+  });
+
+  document.getElementById('timelinePlayBtn').addEventListener('click', () => togglePlay(slider));
+
+  applyVisibility();
+}
+
+function togglePlay(slider) {
+  const btn = document.getElementById('timelinePlayBtn');
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+    btn.innerHTML = '&#9654;';
+    return;
+  }
+  btn.innerHTML = '&#10074;&#10074;';
+  playInterval = setInterval(() => {
+    const next = Number(slider.value) + 1;
+    if (next > Number(slider.max)) {
+      clearInterval(playInterval);
+      playInterval = null;
+      btn.innerHTML = '&#9654;';
+      return;
+    }
+    slider.value = next;
+    slider.dispatchEvent(new Event('input'));
+  }, 600);
+}
+
+function togglePanel() {
+  const panel = document.getElementById('sidePanel');
+  const btn = document.querySelector('.panel-toggle');
+  panel.classList.toggle('hidden');
+  btn.classList.toggle('panel-hidden');
+  setTimeout(() => map.invalidateSize(), 350);
+}
+
+loadData();
+
+</script>
+</body>
+</html>

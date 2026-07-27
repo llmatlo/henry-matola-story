@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Henry Matola — A WWII Service Story</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #f5f0eb; color: #3b3228;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: #f5f6f7; border-radius: 10px; padding: 32px 32px 28px;
+    margin-bottom: 28px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { font-size: 26px; font-weight: 600; margin-bottom: 8px; }
+  header p { font-size: 14px; color: #c7ccd1; line-height: 1.55; max-width: 560px; }
+
+  .cards { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+  .card {
+    display: flex; align-items: baseline; gap: 12px; text-decoration: none; color: inherit;
+    background: #faf9f7; border: 1px solid #d8d4cc; border-radius: 10px;
+    padding: 20px 24px; transition: box-shadow 0.2s, transform 0.2s;
+  }
+  .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); transform: translateY(-2px); }
+  .card .icon { font-size: 22px; }
+  .card .body { flex: 1; }
+  .card h3 { font-size: 17px; color: #2c3e50; margin-bottom: 3px; }
+  .card p { font-size: 13px; line-height: 1.5; color: #4a4238; }
+  .card .meta { margin-top: 8px; font-size: 11px; color: #8b7a66; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  footer { margin-top: 32px; font-size: 12px; color: #8b7a66; text-align: center; }
+</style>
+<!-- Cloudflare Web Analytics: paste the Cloudflare-provided snippet here, right before the closing head tag -->
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Henry Matola — A WWII Service Story</h1>
+    <p>PFC Henry F. Matola, D Company, 47th Infantry Regiment, 9th Infantry Division.
+    North Africa, Sicily, Normandy, and the drive into Germany — reconstructed from
+    National Archives records, family history, and the medals he brought home.</p>
+  </header>
+
+  <div class="cards">
+    <a class="card" href="maps/index.html">
+      <span class="icon">🗺️</span>
+      <span class="body">
+        <h3>Interactive Maps</h3>
+        <p>Four maps, one per theater — click any dot for the dated events that happened
+        there, drawn directly from primary military records.</p>
+        <div class="meta">Stateside · North Africa · Sicily · Europe</div>
+      </span>
+    </a>
+
+    <a class="card" href="data/henry_matola_family_edition_illustrated.pdf">
+      <span class="icon">📖</span>
+      <span class="body">
+        <h3>Family Edition</h3>
+        <p>The full narrative biography, illustrated with photographs from the family
+        collection and the National Archives.</p>
+        <div class="meta">PDF · 7.1 MB</div>
+      </span>
+    </a>
+
+    <a class="card" href="data/henry_matola_timeline.pdf">
+      <span class="icon">📋</span>
+      <span class="body">
+        <h3>Full Timeline</h3>
+        <p>The complete day-by-day, source-cited record behind the maps and the family
+        edition — every claim traced to its original document.</p>
+        <div class="meta">PDF</div>
+      </span>
+    </a>
+  </div>
+
+  <footer>© 2026 The Matola Family. U.S. military records reproduced herein are public-domain U.S. Government works; personal photographs courtesy of the Matola family.</footer>
+</div>
+
+</body>
+</html>

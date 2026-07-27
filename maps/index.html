@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Henry Matola — WWII Service Maps</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #f5f0eb; color: #3b3228;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: #f5f6f7; border-radius: 10px; padding: 28px 32px;
+    margin-bottom: 28px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
+  header p { font-size: 14px; color: #c7ccd1; line-height: 1.5; max-width: 640px; }
+
+  .legend {
+    background: #faf9f7; border: 1px solid #d8d4cc; border-radius: 8px;
+    padding: 18px 22px; margin-bottom: 28px;
+  }
+  .legend h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #2c3e50; margin-bottom: 12px; }
+  .legend-items { display: flex; flex-wrap: wrap; gap: 18px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+  .cross { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; position: relative; background: #d97706; border: 1px solid rgba(0,0,0,0.15); }
+  .cross::before, .cross::after { content: ''; position: absolute; background: #fff; }
+  .cross::before { left: 50%; top: 20%; bottom: 20%; width: 2px; transform: translateX(-50%); }
+  .cross::after { top: 50%; left: 20%; right: 20%; height: 2px; transform: translateY(-50%); }
+
+  .cards { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 700px) { .cards { grid-template-columns: 1fr 1fr; } }
+
+  .card {
+    display: block; text-decoration: none; color: inherit;
+    background: #faf9f7; border: 1px solid #d8d4cc; border-radius: 10px;
+    padding: 22px 24px; transition: box-shadow 0.2s, transform 0.2s;
+  }
+  .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); transform: translateY(-2px); }
+  .card h3 { font-size: 18px; color: #2c3e50; margin-bottom: 2px; }
+  .card .dates { font-size: 12px; color: #8b7a66; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .card p { font-size: 14px; line-height: 1.55; color: #4a4238; }
+  .card .stops { display: inline-block; margin-top: 12px; font-size: 12px; color: #8b7a66; }
+
+  footer { margin-top: 32px; font-size: 12px; color: #8b7a66; text-align: center; }
+
+  .medal {
+    background: #faf9f7; border: 1px solid #d8d4cc; border-radius: 8px;
+    padding: 18px 22px; margin-bottom: 28px;
+  }
+  .medal h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #2c3e50; margin-bottom: 10px; }
+  .medal p { font-size: 13px; line-height: 1.55; color: #4a4238; margin-bottom: 12px; }
+  .stars { display: flex; flex-wrap: wrap; gap: 8px; }
+  .star-badge {
+    font-size: 12px; padding: 5px 12px; border-radius: 999px;
+    background: #eef1f4; border: 1px solid #d8d4cc; color: #2c3e50;
+  }
+
+  .campaign-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .campaign-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: #eef1f4; border: 1px solid #d8d4cc; color: #5c6b7a;
+  }
+
+  .docs { margin-bottom: 28px; }
+  .docs h2 {
+    font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #2c3e50; margin-bottom: 12px;
+  }
+  .doc-list { display: flex; flex-direction: column; gap: 10px; }
+  .doc-link {
+    display: flex; align-items: baseline; gap: 10px; text-decoration: none; color: inherit;
+    background: #faf9f7; border: 1px solid #d8d4cc; border-radius: 8px;
+    padding: 14px 18px; transition: box-shadow 0.2s;
+  }
+  .doc-link:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+  .doc-link .doc-name { font-size: 14px; font-weight: 600; color: #2c3e50; }
+  .doc-link .doc-desc { font-size: 12px; color: #6b6355; }
+  .doc-link .doc-size { margin-left: auto; font-size: 11px; color: #8b7a66; white-space: nowrap; }
+</style>
+<!-- Cloudflare Web Analytics: paste the Cloudflare-provided snippet here, right before the closing head tag -->
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Henry Matola — WWII Service Maps</h1>
+    <p>PFC Henry F. Matola, D Company, 47th Infantry Regiment, 9th Infantry Division. Four maps,
+    one per theater — click any dot for the dated events that happened there, drawn directly from
+    primary military records (morning reports, hospital admission cards, unit journals).</p>
+  </header>
+
+  <div class="legend">
+    <h2>How to read the dots</h2>
+    <div class="legend-items">
+      <div class="legend-item"><div class="dot" style="background:#2563eb"></div> Henry, with D Company</div>
+      <div class="legend-item"><div class="dot" style="background:#d97706"></div> Henry, detached from D Company</div>
+      <div class="legend-item"><div class="dot" style="background:#94a3b8"></div> D Company's own path, without Henry</div>
+      <div class="legend-item"><div class="cross"></div> Hospital stay</div>
+    </div>
+  </div>
+
+  <div class="medal">
+    <h2>His six campaign stars</h2>
+    <p>Henry's European-African-Middle Eastern Campaign Medal carries a silver service star (5
+    credits) and a bronze service star (1 credit) — six official campaign credits in total,
+    confirmed by the physical medal and devices in the family's possession. Each one ties directly
+    to the maps below.</p>
+    <div class="stars">
+      <span class="star-badge">North Africa</span>
+      <span class="star-badge">Sicily</span>
+      <span class="star-badge">Normandy</span>
+      <span class="star-badge">Northern France</span>
+      <span class="star-badge">Rhineland</span>
+      <span class="star-badge">Central Europe</span>
+    </div>
+  </div>
+
+  <div class="cards">
+    <a class="card" href="stateside.html">
+      <h3>Stateside</h3>
+      <div class="dates">Fort Bragg, NC · Oct 1940 – Oct 1942</div>
+      <p>Henry and George Kysilka enlist together at Fort Hayes, Columbus, and train with the newly
+      reactivated 47th Infantry Regiment at Fort Bragg — two years of stateside training before
+      shipping out to North Africa. Henry's Oct 13, 1940 enlistment, over a year before Pearl
+      Harbor, earned him the American Defense Service Medal.</p>
+      <span class="stops">5 stops</span>
+      <div class="campaign-tags"><span class="campaign-tag">American Defense Service Medal</span></div>
+    </a>
+
+    <a class="card" href="africa.html">
+      <h3>North Africa</h3>
+      <div class="dates">Operation Torch &amp; Tunisia · Nov 1942 – Jul 1943</div>
+      <p>Henry's combat debut: the landing at Safi, the push across Algeria and Tunisia, and the
+      fighting at Kasserine Pass, El Guettar, and Bizerte that ended the North African campaign.</p>
+      <span class="stops">19 stops</span>
+      <div class="campaign-tags"><span class="campaign-tag">★ North Africa</span></div>
+    </a>
+
+    <a class="card" href="sicily.html">
+      <h3>Sicily</h3>
+      <div class="dates">Operation Husky · Aug – Nov 1943</div>
+      <p>D Company's fight through Troina, Cesaro, and Randazzo — fighting the timeline flags as
+      <em>not</em> confirmed to include Henry, who was on detached duty (Quartermaster, then
+      Seventh Army HQ) for at least part of the campaign, rejoining Oct 24.</p>
+      <span class="stops">15 stops</span>
+      <div class="campaign-tags"><span class="campaign-tag">★ Sicily</span></div>
+    </a>
+
+    <a class="card" href="europe.html">
+      <h3>Europe</h3>
+      <div class="dates">England, Normandy, Belgium, Germany · Nov 1943 – Jul 1945</div>
+      <p>England training, D-Day (Operation Overlord) and the landing at Utah Beach, the wounding near Orglandes,
+      hospitalization at Cirencester, an AWOL/court-martial episode and months in the
+      replacement-depot system while D Company broke out through Operation Cobra and fought on
+      through Belgium and the Siegfried Line — then Henry's return to the 47th for the Battle of the
+      Bulge, the Rhine crossing, and VE Day. The largest and most detailed of the four maps.</p>
+      <span class="stops">66 stops</span>
+      <div class="campaign-tags">
+        <span class="campaign-tag">★ Normandy</span>
+        <span class="campaign-tag">★ Northern France</span>
+        <span class="campaign-tag">★ Rhineland</span>
+        <span class="campaign-tag">★ Central Europe</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="docs">
+    <h2>Read the full story</h2>
+    <div class="doc-list">
+      <a class="doc-link" href="../data/henry_matola_family_edition_illustrated.pdf">
+        <span class="doc-name">Family Edition</span>
+        <span class="doc-desc">The full narrative biography, with photos</span>
+        <span class="doc-size">PDF · 7.1 MB</span>
+      </a>
+      <a class="doc-link" href="../data/henry_matola_timeline.pdf">
+        <span class="doc-name">Full Timeline</span>
+        <span class="doc-desc">The complete day-by-day, source-cited record behind the maps above</span>
+        <span class="doc-size">PDF · 358 KB</span>
+      </a>
+    </div>
+  </div>
+
+  <footer>Built from data/henry_matola_timeline.md — see the project README for how to regenerate these maps.</footer>
+</div>
+
+</body>
+</html>

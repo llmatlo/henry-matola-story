@@ -1,0 +1,2238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>History Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f5f0eb; color: #3b3228; }
+
+#map { width: 100%; height: 100vh; }
+
+/* Top bar */
+.top-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-bottom: 2px solid #7f8c9a;
+  padding: 10px 20px;
+  display: flex; align-items: baseline; gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.top-bar h1 {
+  font-size: 18px; font-weight: 600; color: #f5f6f7;
+  white-space: nowrap;
+}
+.top-bar .subtitle {
+  font-size: 12px; color: #c7ccd1;
+}
+
+/* Timeline bar */
+.timeline-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-top: 2px solid #7f8c9a;
+  padding: 8px 20px 10px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+}
+.timeline-caption {
+  font-size: 11px; color: #c7ccd1; text-align: center; margin-bottom: 6px;
+}
+.timeline-controls {
+  display: flex; align-items: center; gap: 14px;
+}
+.timeline-play-btn {
+  background: #faf9f7; border: 1px solid #d8d4cc;
+  color: #6b6355; padding: 6px 10px; cursor: pointer;
+  border-radius: 4px; font-size: 13px; flex-shrink: 0;
+  transition: color 0.2s;
+}
+.timeline-play-btn:hover { color: #2c3e50; }
+.timeline-bar input[type="range"] {
+  flex: 1; accent-color: #f5f6f7;
+}
+.timeline-date {
+  font-size: 13px; color: #f5f6f7; white-space: nowrap;
+  min-width: 140px; text-align: right;
+}
+
+/* Side panel */
+.side-panel {
+  position: absolute; top: 52px; right: 0; bottom: 76px; width: 280px;
+  z-index: 999; background: #faf9f7; border-left: 2px solid #d8d4cc;
+  overflow-y: auto; transition: transform 0.3s;
+  padding: 16px;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+}
+.side-panel.hidden { transform: translateX(100%); }
+
+.panel-toggle {
+  position: absolute; top: 62px; right: 280px; z-index: 1000;
+  background: #faf9f7; border: 1px solid #d8d4cc; border-right: none;
+  color: #6b6355; padding: 8px 6px; cursor: pointer;
+  border-radius: 4px 0 0 4px; font-size: 14px; transition: all 0.3s;
+}
+.panel-toggle:hover { color: #2c3e50; }
+.panel-toggle.panel-hidden { right: 0; }
+
+.panel-section { margin-bottom: 20px; }
+.panel-section h3 {
+  font-size: 13px; color: #2c3e50; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 10px;
+  padding-bottom: 4px; border-bottom: 1px solid #d8d4cc;
+}
+
+/* Legend items */
+.legend-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 13px;
+}
+.legend-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+}
+.legend-cross {
+  width: 14px; height: 14px; border-radius: 50%;
+  flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+  position: relative;
+  background: #555;
+}
+.legend-cross::before, .legend-cross::after {
+  content: ''; position: absolute; background: #fff;
+}
+.legend-cross::before { left: 50%; top: 20%; bottom: 20%; width: 2px; transform: translateX(-50%); }
+.legend-cross::after { top: 50%; left: 20%; right: 20%; height: 2px; transform: translateY(-50%); }
+
+/* Layer toggles */
+.layer-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; font-size: 13px; cursor: pointer;
+}
+.layer-toggle input { accent-color: #2c3e50; }
+
+/* Hospital marker (divIcon) */
+.hospital-marker {
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  position: relative;
+}
+.hospital-marker::before, .hospital-marker::after {
+  content: ''; position: absolute; background: #fff;
+}
+.hospital-marker::before { left: 50%; top: 22%; bottom: 22%; width: 3px; transform: translateX(-50%); }
+.hospital-marker::after { top: 50%; left: 22%; right: 22%; height: 3px; transform: translateY(-50%); }
+
+/* Family/date chip (divIcon, not a Leaflet tooltip — see markers.js: buildChipMarker) */
+.family-chip-icon {
+  background: none; border: none; pointer-events: none;
+}
+.family-chip-inner {
+  display: inline-block; white-space: nowrap;
+  background: rgba(250, 249, 247, 0.95); border: 1px solid #d8d4cc;
+  border-radius: 4px; padding: 3px 6px; font-size: 11px; line-height: 1.4;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+.family-chip-line strong { color: #2c3e50; }
+.family-chip-range { color: #8b7a66; }
+body.hide-chips .family-chip-icon { display: none; }
+
+/* Custom popups */
+.leaflet-popup-content-wrapper {
+  background: #faf9f7 !important; color: #3b3228 !important;
+  border: 1px solid #d8d4cc !important; border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+.leaflet-popup-tip { background: #faf9f7 !important; }
+.leaflet-popup-content {
+  font-size: 13px; line-height: 1.5; max-width: 320px;
+  max-height: 320px; overflow-y: auto; padding-right: 4px;
+}
+.popup-title {
+  font-size: 15px; font-weight: 600; color: #2c3e50;
+  margin-bottom: 6px;
+}
+.popup-badge {
+  display: inline-block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px;
+  color: #fff; margin-bottom: 8px;
+}
+.popup-families { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.popup-family-tag {
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  color: #fff; font-weight: 500;
+}
+.popup-desc { color: #4a4238; margin: 8px 0; }
+.popup-link {
+  display: block; margin-top: 6px;
+  color: #2563eb; text-decoration: none; font-size: 12px;
+}
+.popup-link:hover { text-decoration: underline; }
+.popup-events { list-style: none; margin: 8px 0 0; padding: 0; }
+.popup-event { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e8e4dc; }
+.popup-event:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.popup-event-date { font-weight: 600; color: #2c3e50; font-size: 12px; }
+.popup-event-campaign { color: #8b7a66; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+.popup-event-text { color: #4a4238; margin-top: 2px; }
+.popup-event-source { color: #8b7a66; font-size: 11px; margin-top: 3px; font-style: italic; }
+
+</style>
+<style media="print">
+@media print {
+  .side-panel, .panel-toggle { display: none !important; }
+  #map { height: 100vh; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+</style>
+<!-- Cloudflare Web Analytics: paste the Cloudflare-provided snippet here, right before the closing head tag -->
+</head>
+<body>
+
+<div class="top-bar">
+  <h1 id="mapTitle">History Map</h1>
+  <span class="subtitle" id="mapSubtitle"></span>
+</div>
+
+<div id="map"></div>
+
+<div class="timeline-bar">
+  <div class="timeline-caption">Drag to see events appear as they happened, or press &#9654; to play through the timeline automatically</div>
+  <div class="timeline-controls">
+    <button class="timeline-play-btn" id="timelinePlayBtn" title="Play through the timeline automatically">&#9654;</button>
+    <input type="range" id="timelineSlider" min="0" max="0" value="0" step="1" title="Drag to travel through time — markers appear as their date is reached">
+    <span class="timeline-date" id="timelineDate"></span>
+  </div>
+</div>
+
+<button class="panel-toggle" onclick="togglePanel()">&#9776;</button>
+
+<div class="side-panel" id="sidePanel">
+  <div class="panel-section">
+    <h3>Tracks</h3>
+    <div id="trackToggles"></div>
+  </div>
+
+  <div class="panel-section">
+    <h3>Legend</h3>
+    <div id="legendItems"></div>
+  </div>
+</div>
+
+<script type="application/json" id="mapData">
+{
+  "meta": {
+    "title": "Henry Matola \u2014 Europe",
+    "subtitle": "England, Normandy, Belgium, Germany, Nov 1943 \u2013 Jul 1945",
+    "defaultCenter": [
+      50.5,
+      3.0
+    ],
+    "defaultZoom": 6,
+    "generated": "2026-07-26",
+    "source": "henry_matola_timeline.md"
+  },
+  "tracks": {
+    "henry": {
+      "label": "Henry",
+      "color": "#2563eb"
+    },
+    "unit": {
+      "label": "D Company (without Henry)",
+      "color": "#94a3b8"
+    }
+  },
+  "statuses": {
+    "with-unit": {
+      "label": "With D Company",
+      "color": "#2563eb"
+    },
+    "detached": {
+      "label": "Detached from D Company",
+      "color": "#d97706"
+    }
+  },
+  "stops": [
+    {
+      "id": "europe-0",
+      "name": "Hampshire, England",
+      "lat": 51.05,
+      "lng": -1.1,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Dec 1, 1943",
+          "dateSort": "1943-12-01",
+          "text": "Vigorous training schedule started",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Dec 24\u201326, 1943",
+          "dateSort": "1943-12-24",
+          "text": "Christmas holiday; dinner and refreshments",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Feb 11\u201328, 1944",
+          "dateSort": "1944-02-11",
+          "text": "Primary and secondary weapons range firing",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Mar 28, 1944",
+          "dateSort": "1944-03-28",
+          "text": "1-year anniversary of Battle of El Guettar; Capt. Inzer treated company to beer at the pub",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "May 1, 1944",
+          "dateSort": "1944-05-01",
+          "text": "Alerted for departure overseas",
+          "source": "Eng/Fr docx",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "May 16, 1944",
+          "dateSort": "1944-05-16",
+          "text": "Division competitive firing for machine gun platoons",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "May 18, 1944",
+          "dateSort": "1944-05-18",
+          "text": "HENRY AWARDED COMBAT INFANTRYMAN BADGE. General Orders No. 5, 47th Infantry, \"Award of Combat Infantryman Badges,\" awards the CIB under War Department Circular 269 (27 Oct 1943) to officers and enlisted men of Company \"D\", 47th Inf. Pfc Henry F Matola, ASN 15013984 named on the Company D list \u2014 documentary confirmation of the CIB (the anchor for the derivative Bronze Star). Pfc George Kysilka, ASN 15013985, is on the same Co. D list (3 lines above Henry)",
+          "source": "**GO No. 5, 47th Inf, 18 May 1944** \u2014 `photos/nara/Box6495/\u20261944-GO_2026/IMG_3753.jpeg` (Co. D list IMG_3752\u21923751\u21923753; NARA frame 6-2585; NND 735017)",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "May 26, 1944",
+          "dateSort": "1944-05-26",
+          "text": "Col. Smythe addressed battalion on the regiment's part in forthcoming operations",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Jun 1\u20135, 1944",
+          "dateSort": "1944-06-01",
+          "text": "Final preparations for marshalling area",
+          "source": "D Co./H Co./Eng/Fr docx",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Jun 2, 1944",
+          "dateSort": "1944-06-02",
+          "text": "HENRY AWARDED DRIVERS AND MECHANICS BADGE (Driver\u2013W). General Orders No. 10, 47th Infantry, awards the badge under War Department Circular 248 (1942) to Pfc Henry F Matola, ASN 15013984, Company \"D\" (Pfc George Kysilka, ASN 15013985, also on the Co. D list)",
+          "source": "**GO No. 10, 47th Inf, 2 Jun 1944** \u2014 `photos/nara/Box6495/\u20261944-GO_2026/IMG_3777.jpeg`",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-1",
+      "name": "Alresford, England",
+      "lat": 51.0972,
+      "lng": -1.1614,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jan 19, 1944",
+          "dateSort": "1944-01-19",
+          "text": "General Montgomery addressed the troops; welcomed them to England, spoke of past campaigns and future cooperation",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Mar 24, 1944",
+          "dateSort": "1944-03-24",
+          "text": "Prime Minister Churchill and General Eisenhower reviewed the troops on the Alresford\u2013Basingstoke highway. Churchill accompanied by General Eddy (9th Division commander)",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-2",
+      "name": "Tichborne, Hampshire, England",
+      "lat": 51.07,
+      "lng": -1.14,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 4, 1944",
+          "dateSort": "1944-02-04",
+          "text": "Henry departed on furlough. Morning report names him going on furlough from his unit at Tichborne",
+          "source": "[Morning Report, NARA Cat. 464593435 p.631](https://catalog.archives.gov/id/464593435?objectPage=631) (S18)",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Feb 14, 1944",
+          "dateSort": "1944-02-14",
+          "text": "Henry returned from furlough \u2014 10-day leave, his only documented leave between arriving in England (Nov 1943) and D-Day",
+          "source": "[Morning Report, NARA Cat. 464593435 p.654](https://catalog.archives.gov/id/464593435?objectPage=654) (S18)",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-3",
+      "name": "Herriard / Tidworth, England",
+      "lat": 51.2417,
+      "lng": -1.6772,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 11\u201322, 1944",
+          "dateSort": "1944-03-11",
+          "text": "Battalion training problems; moved to Tidworth for live-fire infantry-tank attack exercises",
+          "source": "D Co./H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-4",
+      "name": "Shrewton area, England",
+      "lat": 51.1928,
+      "lng": -1.9046,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 9\u201310, 1944",
+          "dateSort": "1944-04-09",
+          "text": "Large live-fire exercise ~50 miles from base; live ammunition fired over riflemen",
+          "source": "H Co.",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-5",
+      "name": "Southampton marshalling area",
+      "lat": 50.9097,
+      "lng": -1.4044,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "May 2\u20136, 1944",
+          "dateSort": "1944-05-02",
+          "text": "Dress rehearsal for invasion. Company left Tichborne by rail and motor at 0925, arrived marshalling area near Southampton at 1125. Received instructions on waterproofing weapons and equipment. Returned to Tichborne on May 7",
+          "source": "Eng/Fr docx",
+          "campaign": "England \u2014 Training for D-Day (Dec 1943 \u2013 Jun 1944)"
+        },
+        {
+          "date": "Jun 6, 1944",
+          "dateSort": "1944-06-06",
+          "text": "D-DAY. Left Alresford approx 1700, proceeded to the marshalling area, arrived approx 0130 on 7 June (per D Co.'s own daily morning report, S26 \u2014 supersedes the earlier \"moved to marshalling area at 0230\" figure from the D Co. narrative history). Intensive map reconnaissance of invasion area. Waterproofing weapons",
+          "source": "D Co./D Co. Morning Report (S26)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 7, 1944",
+          "dateSort": "1944-06-07",
+          "text": "\"Usual camp duties\" per the company's daily morning report \u2014 no individual changes",
+          "source": "D Co. Morning Report (S26)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 8, 1944",
+          "dateSort": "1944-06-08",
+          "text": "Left the marshalling area and boarded LCT #16 at about 1600 (D Co.'s own daily morning report, S26). This conflicts with the \"turned away from the docks, returned 1400, boarded transport at 2100\" account below (sourced to the 1st Bn Journal covering Companies A, B, and D collectively) \u2014 D Company's own record shows a direct, uninterrupted boarding with no mention of a failed first attempt. Treated as an open discrepancy between two primary-adjacent sources, not resolved; the 1st Bn Journal account may describe a different company or the battalion as a whole rather than D Company specifically.",
+          "source": "D Co. Morning Report (S26) / D Co./H Co./1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-6",
+      "name": "Utah Beach, Normandy, France",
+      "lat": 49.4139,
+      "lng": -1.1751,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 10, 1944",
+          "dateSort": "1944-06-10",
+          "text": "Still aboard LCT #16 as of the report's 2400 cutoff (\"No Change\"); the following day's report clarifies: \"Disembarked about 2100 10 June 44 and proceeded to St Mere Eglise, France to bivouac area\" (D Co.'s own daily morning report, S26 \u2014 supersedes the \"~1800\" figure from the D Co. narrative history; note this primary daily record names no beach at all, neither Utah nor Omaha). D Company and medics arrived ~24 hours before the rest of 1st Battalion on a separate ship. Transferred from transport to LCTs and LCIs. Bombed and strafed during move inland. Marched to 9th Division transit area near Sebeville (Regimental CP at grid 372945 / [~49.37\u00b0N, 1.28\u00b0W](https://www.google.com/maps?q=49.36740,-1.28409)), then to bivouac near St. Mere-Eglise. Fields littered with airborne gliders from the D-Day landings. Corroboration that D Co. landed ahead of the regiment: the 47th IR Unit Journal records that when Regimental HQ established the CP at Sebeville on 11 Jun at 2320B, \"'D' Co had already landed\" \u2014 the regiment's main body (Regt HQ + remainder of 1st Bn) did not unload until 11 June (D+5) per the AAR, with other companies disembarking 12 June.",
+          "source": "D Co. Morning Report (S26) / D Co./H Co./47th IR Cherbourg History/1st Bn Journal/47th IR Unit Journal/47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-7",
+      "name": "St Mere Eglise, France",
+      "lat": 49.4085,
+      "lng": -1.3153,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 11, 1944",
+          "dateSort": "1944-06-11",
+          "text": "\"No Change\" per the company's daily morning report; \"usual bivouac duties\"",
+          "source": "D Co. Morning Report (S26)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-8",
+      "name": "9th Division area, Normandy",
+      "lat": 49.3674,
+      "lng": -1.28409,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 12, 1944",
+          "dateSort": "1944-06-12",
+          "text": "Maps distributed; general situation briefings conducted across the division. D Co.'s own morning report confirms St Mere Eglise, \"no change,\" \"usual bivouac duties\"",
+          "source": "47th IR Cherbourg History / D Co. Morning Report (S26)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-9",
+      "name": "Ecoqueneauville / Caponnell, France",
+      "lat": 49.41,
+      "lng": -1.36,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 13, 1944",
+          "dateSort": "1944-06-13",
+          "text": "~1615: First field order received from division. Main objective of 9th Division: drive to the sea and seal off the Cherbourg Peninsula. General Eddy (9th Div. commander) briefed regimental COs. Battalion and company commanders visited 90th Division's combat area ahead. 1st Bn order of march: A, B, Hq, C, D. Bn staff and Co Commanders met at 2310, bivouacked near Caponnell",
+          "source": "47th IR Cherbourg History/1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-10",
+      "name": "Gourbesville / Merderet River",
+      "lat": 49.4,
+      "lng": -1.37,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 14, 1944",
+          "dateSort": "1944-06-14",
+          "text": "60th Infantry committed as assault regiment at 0835; 1st Bn is Division Reserve. 47th IR crossed the Merderet River at Gourbesville. D Company moved forward to assembly area \u2014 1st Bn order of march: B, C, D, Hq, A, AT; walked ~2 miles to bivouac. 1st Bn commanded by Lt. Col. Den T. Vanderhoef",
+          "source": "D Co./47th IR Cherbourg History/1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-11",
+      "name": "Near Orglandes, France",
+      "lat": 49.3962,
+      "lng": -1.44862,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 15, 1944",
+          "dateSort": "1944-06-15",
+          "text": "FIRST COMBAT IN FRANCE. 0935: Gen. Eddy and Col. Smythe arrived at 1st Bn CP (grid 275955 / [~49.376\u00b0N, 1.418\u00b0W](https://www.google.com/maps?q=49.37640,-1.41820)) to brief staff and company commanders. 1041: 1st Bn moved out leading the regiment; order of march: A, B, C, D, Hq. Snipers harassed the march the entire ~6 miles. SP gun shells landed near the road. Small arms fire nearly continuous. By ~1715, companies deployed: C, B, A forward; D in support. 1st Bn front line reached grid (253977) / [~49.396\u00b0N, 1.449\u00b0W](https://www.google.com/maps?q=49.39620,-1.44862)\u2013(247977) / [~49.396\u00b0N, 1.457\u00b0W](https://www.google.com/maps?q=49.39620,-1.45691) by evening. At ~1900, Sgt. Graeff's squad took a direct mortar hit at grid (251974) / [~49.394\u00b0N, 1.451\u00b0W](https://www.google.com/maps?q=49.39350,-1.45138) \u2014 Pvt. Groves KIA; Sgt. Graeff, Pvts. Raimondo, Falconiero, Rollins & Benethum WIA. Enemy fire came from mortars, SP guns, and a battery in the vicinity of Orglandes (grid 252972 / [~49.392\u00b0N, 1.450\u00b0W](https://www.google.com/maps?q=49.39170,-1.45000)). 2015: Artillery fire requested on Orglandes. Three D Company men wounded per D Co. history. Attached units supporting 1st Bn included Co. B, 746th Tank Bn and Co. B, 899th Tank Destroyer Bn. H Company: 1 WIA",
+          "source": "D Co./H Co./1st Bn Journal/47th IR Unit Journal/47th IR AA Report",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-12",
+      "name": "Orglandes area, France",
+      "lat": 49.3809,
+      "lng": -1.43756,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 16, 1944",
+          "dateSort": "1944-06-16",
+          "text": "HENRY MATOLA WOUNDED. 1st and 3rd Bns continued attack; 1st Bn assigned successive objectives D-F-G. 0750: Artillery from Orglandes hit A Company, then shifted SW. 0830: \"1st Bn receiving mortar fire from vicinity of ORGLANDES.\" 0855: Suspected counterattack from Reigneville (grid 236967 / [~49.387\u00b0N, 1.472\u00b0W](https://www.google.com/maps?q=49.38720,-1.47212)); artillery and high-velocity gun fire from Orglandes hit 1st Bn right flank. Company positions at ~0950: C Co at (252980) / [~49.399\u00b0N, 1.450\u00b0W](https://www.google.com/maps?q=49.39890,-1.45000), B Co at (249975) / [~49.394\u00b0N, 1.454\u00b0W](https://www.google.com/maps?q=49.39440,-1.45415), A Co at (253974) / [~49.394\u00b0N, 1.449\u00b0W](https://www.google.com/maps?q=49.39350,-1.44862). Henry hit by shrapnel. The Co. D morning report records his wound as \"shrap jaw and chest\" and classifies him SWA (Seriously Wounded in Action); the 305th Station Hospital Admission & Disposition report (S23) records \"Pen W rt shoulder sv\" (penetrating wound, right shoulder, severe); his later SGO Hospital Admission Card codes the principal site as the neck \u2014 together describing one artillery-shell-fragment burst across the right side (jaw, neck, chest, shoulder), corroborating the family's account in full. PFC George Kysilka hit by shrapnel to the right leg (also \"SWA\") in the same engagement. Both had consecutive service numbers \u2014 they enlisted together at Fort Hayes, Columbus, Ohio on October 13, 1940 and served side by side through Africa, Sicily, and into Normandy. Both evacuated to the Clearing Company, 9th Medical Battalion (their division's own medical battalion), then to hospitals in England (hospital unknown). Dropped from company rolls this date. By 0900: casualty NCO reported 15 casualties, 1 dead, 1 missing. By 1200: total 1st Bn casualties \u2014 1 KIA, 20 EM WIA, 2 officers WIA, 2 sick evacuated (Henry among the 20 WIA). 1017: C Co commander injured; Lt. Morgan of B Co injured. That afternoon, Lt. Glider (D Co.), Lt. Bowles, and Pvt. Garrison were attacked ~400 yards NE of A Co's position; their vehicle was set on fire \u2014 Lt. Glider, although severely wounded, removed another officer and the body of his driver from the burning vehicle (awarded Bronze Star for this action). Bowles and Garrison presumed KIA. By day's end, 1st Bn had advanced through Hautteville Bocage (grid 238987 / [~49.405\u00b0N, 1.469\u00b0W](https://www.google.com/maps?q=49.40520,-1.46936)) to positions astride the St. Sauveur-Valognes road. H Company: heaviest fire ever laid by company; Canville taken. The Co. D morning report's station line reads \"vicinity of Picauville\" (~49.34\u00b0N, 1.41\u00b0W \u2014 west of the Merderet) \u2014 the company's location of record that day; consistent with the 1st Bn axis of advance through Hautteville Bocage toward St. Sauveur\u2013Valognes",
+          "source": "D Co./H Co./Morning Report/Newspaper/1st Bn Journal/47th IR Unit Journal/47th IR AA Report/[Morning Report, NARA Cat. 478540412 p.622](https://catalog.archives.gov/id/478540412?objectPage=622) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-13",
+      "name": "Douve River / Cotentin Peninsula",
+      "lat": 49.38,
+      "lng": -1.42,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 17, 1944",
+          "dateSort": "1944-06-17",
+          "text": "Crossed the Douve River. Passed through 82nd Airborne bridgehead at St. Sauveur-le-Vicomte; advanced to cut the Cotentin Peninsula. 3rd Bn led as advance guard, minor opposition at St. Sauveur. German 77th and 709th Divisions withdrawing. By 2200, 1st Bn reached G. de Haunville (097909) / [~49.34\u00b0N, 1.66\u00b0W](https://www.google.com/maps?q=49.33500,-1.66430), severing the La Haye du Puits\u2013Barneville road and completing the isolation of the Cotentin Peninsula. 9th Division credited with greatest advance of the invasion thus far. Strafed by friendly aircraft. 2 men and 2 vehicles captured by enemy",
+          "source": "D Co./47th IR Cherbourg History/47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-14",
+      "name": "Cotentin Peninsula / Port Bail, France",
+      "lat": 49.35,
+      "lng": -1.65,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 18, 1944",
+          "dateSort": "1944-06-18",
+          "text": "47th Infantry first unit to reach the sea \u2014 reached Port Bail (068895) / [~49.32\u00b0N, 1.70\u00b0W](https://www.google.com/maps?q=49.32241,-1.70439) and Neuville an Beaumont (138908) / [~49.33\u00b0N, 1.61\u00b0W](https://www.google.com/maps?q=49.33410,-1.60761), credited with actually cutting the peninsula. Mortars fired almost continuously; knocked out enemy column. Strong pocket of several hundred enemy at Canville (115201) / [~49.60\u00b0N, 1.64\u00b0W](https://www.google.com/maps?q=49.59778,-1.63941) reduced after heavy fighting. D Company spotted enemy MGs holding up 2nd Bn's advance and requested permission to fire mortars on them \u2014 authorized at 1705. At 0645, allied planes with friendly markings dive-bombed 2nd Bn, killing one officer (friendly fire). BBC announced 9th Division cut the Cherbourg Peninsula; Gen. Eddy ordered the news passed to all troops. War correspondents at Regimental CP: Herb Clark (Blue Network), Bill Chaplin (NBC), Larry LeSeur, Cpl Joe Cunningham (*Yank* Magazine). Relieved by 357th Infantry (90th Inf. Div.) at 2100; D Co. marched 7 miles to bivouac near Bricquebec",
+          "source": "D Co./47th IR AAR/1st Bn Journal/47th IR Unit Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 28, 1944",
+          "dateSort": "1944-06-28",
+          "text": "D Company strength after ~80 replacements: 148 EM & 7 Officers. (A Co: 149 EM & 4 Off; B Co: 141 EM & 5 Off; C Co: 124 EM & 6 Off.) Col. Vanderhoef and patrol personally captured Lt. Col. Kiel, believed to be commander of all remaining Germans in the boot of the peninsula, along with his staff and second-in-command",
+          "source": "1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-16",
+      "name": "Mont du Roule / Pinville, France",
+      "lat": 49.6333,
+      "lng": -1.6333,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 19, 1944",
+          "dateSort": "1944-06-19",
+          "text": "D Company sent to vicinity of Pinville for independent mop-up of bypassed resistance \u2014 unusual tasking for a heavy weapons company. 1st Bn received 16 replacements. March order: A, D, C, B, Hq (D Company second in line). Attacked; contacted enemy at 1000. Advanced to foot of Mont du Roule (enemy strong point near Tourlaville). Mortars and MGs fired on enemy from afternoon until dark. Airbursts fired over marching men \u2014 few casualties",
+          "source": "D Co./47th IR AAR/1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-17",
+      "name": "Mont du Roule, France",
+      "lat": 49.6333,
+      "lng": -1.6167,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 20\u201321, 1944",
+          "dateSort": "1944-06-20",
+          "text": "Held up by heavy enemy mortar and small arms fire. Mortars and machine guns firing almost continuously. D Company: 2 EM killed, 4 wounded. H Company (Jun 21): 12 EM WIA evacuated, 2 WIA not evacuated, 1 KIA \u2014 single bloodiest day recorded",
+          "source": "D Co./H Co.",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 22, 1944",
+          "dateSort": "1944-06-22",
+          "text": "Air bombing mission preceded the attack \u2014 some bombs fell in battalion areas causing casualties (friendly fire). Troops withdrew 1,200 yards for bombing safety, then attacked vigorously at ~1400. 1st Bn crossed the river line at (077178) / [~49.58\u00b0N, 1.69\u00b0W](https://www.google.com/maps?q=49.57709,-1.69195), encountered mine fields, 4 double-wire aprons, and heavy MG fire at (075180) / [~49.58\u00b0N, 1.69\u00b0W](https://www.google.com/maps?q=49.57889,-1.69472) \u2014 a prepared position. Caught in crossfire pattern; dug in at (073183\u2013078176) / [~49.58\u00b0N, 1.69\u00b0W](https://www.google.com/maps?q=49.57889,-1.69472). D Company captured 55 prisoners. H Company: 1 officer and 10 EM WIA",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 23, 1944",
+          "dateSort": "1944-06-23",
+          "text": "D Company succeeded in taking Mont du Roule; set up defensive positions",
+          "source": "D Co.",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-15",
+      "name": "305th Station Hospital \u2192 US Army Hospital Plant 4150, Cirencester, England",
+      "lat": 51.7156,
+      "lng": -1.9685,
+      "track": "henry",
+      "hospital": true,
+      "events": [
+        {
+          "date": "Jun 21, 1944",
+          "dateSort": "1944-06-21",
+          "text": "Hospital admission, Cirencester. Henry transferred to US Army Hospital Plant 4150 at Cirencester \u2014 operated by the 192nd General Hospital since May 20, 1944 (when the 25th General Hospital handed the plant over). Plant 4150 was part of the 15th Hospital Center, Cirencester Park, Gloucestershire",
+          "source": "[Morning Report, NARA Cat. 477627076 p.884](https://catalog.archives.gov/id/477627076?objectPage=884) (S18); [Morning Report, NARA Cat. 477623709 p.940](https://catalog.archives.gov/id/477623709?objectPage=940) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 26, 1944",
+          "dateSort": "1944-06-26",
+          "text": "Hospital morning report continues to list Henry \u2014 confirming continued treatment at Cirencester",
+          "source": "[Morning Report, NARA Cat. 477623709 p.970](https://catalog.archives.gov/id/477623709?objectPage=970) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 13, 1944",
+          "dateSort": "1944-07-13",
+          "text": "Henry released from hospital \u2014 24 days after the wound (Jun 16 \u2192 Jul 13). The 29 \"non-effective days\" figure on the Hospital Admission Card includes additional days in the evacuation chain on either end",
+          "source": "[Morning Report, NARA Cat. 481202935 p.928](https://catalog.archives.gov/id/481202935?objectPage=928) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 13, 1944",
+          "dateSort": "1944-07-13",
+          "text": "HENRY RELEASED FROM HOSPITAL. Per 192nd General Hospital Special Orders No. 107 (13 Jul 1944, S25), Henry \u2014 found physically qualified for duty \u2014 was released from US Army Hospital Plant 4150 and transferred o/a 15 Jul 1944 to the 10th Replacement Depot (APO 574), the Lichfield reinforcement depot. *(This order also settles the receiving general hospital as the 192nd, not the 25th. Earlier reconstructions placed Henry's return to D Company in early July; the morning-report record contradicts this \u2014 see Lichfield/Le Mans/\u00c9tampes entries that follow)*",
+          "source": "192nd Gen Hosp SO No. 107 (S25) / Morning Report (S18) / Newspaper",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "detached"
+    },
+    {
+      "id": "europe-18",
+      "name": "Outskirts of Cherbourg",
+      "lat": 49.6337,
+      "lng": -1.6222,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 24, 1944",
+          "dateSort": "1944-06-24",
+          "text": "Captured enemy strong point on outskirts of Cherbourg. 2nd Platoon on hill overlooking city",
+          "source": "D Co.",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 25, 1944",
+          "dateSort": "1944-06-25",
+          "text": "47th Infantry first to enter the Cherbourg fortress. Broke into the western side of the city and drove to the beach at ~(115252) / [~49.64\u00b0N, 1.64\u00b0W](https://www.google.com/maps?q=49.64368,-1.63941). 1st Platoon attacked with B Company. Mortars fired ~1,400 rounds into Cherbourg docks. 2nd Bn mortars destroyed 7 Nebelwerfers. Arsenal area partially cleared but thick-walled and underground installations remained a center of strong resistance. Fierce resistance encountered all the way, but \"the spirited drive of the 47th was not to be stopped\"",
+          "source": "D Co./47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 26, 1944",
+          "dateSort": "1944-06-26",
+          "text": "CHERBOURG FELL. White flags appeared. Hundreds of prisoners captured. 1st Bn (\"B\" Company having reverted) entered city at 0800 with C Company leading \u2014 fought all day reducing strongpoints and clearing snipers. All organized resistance ceased except the Arsenal",
+          "source": "D Co./47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jun 27, 1944",
+          "dateSort": "1944-06-27",
+          "text": "Col. Smythe personally delivered ultimatum to German Commandant General Major Sattler at the Arsenal; surrender effected at 0930. Two German hospitals taken containing 2,600 patients (including 150 American wounded). At 1600, liberation ceremony at the Place de Napoleon \u2014 elements of 9th, 4th, and 79th Divisions participated. Cleaning out remaining enemy toward Cap de la Hague (~3,000 Germans still resisting). H Company: 2 KIA, 1 officer and 14 EM WIA (heavy mortar fire at Acuelleville)",
+          "source": "D Co./H Co./47th IR Cherbourg History/47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-19",
+      "name": "Cap de la Hague \u2014 Nacqueville / Digulleville / Greville",
+      "lat": 49.7167,
+      "lng": -1.9333,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 29\u201330, 1944",
+          "dateSort": "1944-06-29",
+          "text": "1st Bn occupied successive objectives along the NE coast of the Cape. 2nd Bn moved through Nacqueville (mined, few enemy). Heavy resistance initially from underground emplacements and artillery, diminishing by 2400. Jun 30: Lt. Stewart of D Company reported wounded. Regiment cleared the last German resistance",
+          "source": "D Co./1st Bn Journal/47th IR AAR/Eng/Fr docx",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 1, 1944",
+          "dateSort": "1944-07-01",
+          "text": "Colonel Keil captured at 0400 by 1st Battalion. Shortly after, remaining enemy forces surrendered. By 1550, entire 47th Infantry sector reported completely clear of all enemy. Prepared to move to Division assembly area at Bois de Norest (045176) / [~49.58\u00b0N, 1.74\u00b0W](https://www.google.com/maps?q=49.57529,-1.73619)",
+          "source": "47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 3, 1944",
+          "dateSort": "1944-07-03",
+          "text": "1st Bn command change: Major Herman A. Schmidt replaced Lt. Col. Vanderhoef as 1st Bn CO. Vanderhoef had commanded 1st Bn from at least Jun 14 through the Cherbourg campaign",
+          "source": "1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-20",
+      "name": "Teurtheville Hague, France",
+      "lat": 49.5833,
+      "lng": -1.7,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 2\u20137, 1944",
+          "dateSort": "1944-07-02",
+          "text": "Rest camp; movies nightly; replacements received. 2nd and 3rd Battalions later awarded Distinguished Unit Badges for the Jun 21\u201326 and Jun 22\u201330 fighting: 2nd Bn captured 4 fortified positions, 1,100 prisoners, and 25 AA guns while suffering 113 casualties; 3rd Bn killed 314 and captured 2,161 enemy while losing 28 killed and 145 wounded in 9 days",
+          "source": "D Co./H Co./47th IR Cherbourg History",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-22",
+      "name": "SW of St. Jean de Daye, France",
+      "lat": 49.2,
+      "lng": -1.15,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 9\u201313, 1944",
+          "dateSort": "1944-07-09",
+          "text": "Attacked against strong resistance; slow progress against MG, mortar, direct 88mm, and enemy tank fire. Tank counterattack pierced left flank. Facing SS Grenadier groups with modified Mark V tanks. Jul 11 casualties: 7 killed, 24 wounded. Jul 11: Regimental CP hit by accurately placed artillery \u2014 truck, tents, and many valuable records destroyed; Col. Smythe wounded in the hand but not evacuated. Jul 12: 1st and 2nd Bns jumped off at 0800; 8 killed, 21 wounded. 2nd Bn fought into LeHommet against very heavy mortar and AT gun fire; enemy counterattack repulsed. Unusual enemy tank/armor activity observed at (420716) / [~49.16\u00b0N, 1.22\u00b0W](https://www.google.com/maps?q=49.16132,-1.21773) \u2014 all Bns ordered into strong defensive positions with mines and roadblocks. H Company: 7 EM WIA on Jul 9; medic KIA and multiple WIA on Jul 13. Jul 13: Lt. Centurione (D Co.) killed near a crossroads by artillery shell \u2014 he had participated in the Anglo-American exchange program on the Isle of Wight in April 1944. D Company warned about mortar fire near G Company's position at grid (424717) / [~49.16\u00b0N, 1.22\u00b0W](https://www.google.com/maps?q=49.16132,-1.21773). Jul 13: 2 killed, 9 wounded",
+          "source": "D Co./H Co./1st Bn Journal/47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-23",
+      "name": "SW of St. Lo, France",
+      "lat": 49.1167,
+      "lng": -1.0833,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 17\u201320, 1944",
+          "dateSort": "1944-07-17",
+          "text": "Enemy artillery extremely heavy. Jul 17: 1st Bn suffered 8 KIA and 35 WIA \u2014 D Company reported at 1015 that friendly artillery (\"Nostril White\") was falling short into their area. H Company: 3 WIA on Jul 17; 10 WIA on Jul 18. Jul 19: 1st Bn in reserve; received 105 EM and 4 Officer replacements. Jul 20: D Company CO Capt. Jesse F. Niven killed by enemy artillery. Shrapnel from the same barrage also killed Capt. Minton and Lt. Murray at the Bn CP, and wounded Pvts. Farnsworth, Beer, and Sgt. Cross; 1 B Co man also killed, 3 wounded. Lt. Frederick Scheel took command of D Company. Staff and Company Commanders meeting held at 2345",
+          "source": "D Co./H Co./1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 21, 1944",
+          "dateSort": "1944-07-21",
+          "text": "6 officers and 5 EM returned from hospital in England. Five missing A Company men located.",
+          "source": "1st Bn Journal/[Morning Report, NARA Cat. 481125251 p.587](https://catalog.archives.gov/id/481125251?objectPage=587) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 23, 1944",
+          "dateSort": "1944-07-23",
+          "text": "Mass held in Bn area. 102 more replacements + 7 returnees received. Lt. McLaughlin became acting S-3 (replacing the killed Capt. Minton). Friendly planes bombed and strafed enemy positions",
+          "source": "1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 24, 1944",
+          "dateSort": "1944-07-24",
+          "text": "Cobra H-hour announced as 1300. Battalions withdrew to bomb-safety line. Attack suspended due to very low ceiling \u2014 all Bns moved forward quickly to re-occupy vacated ground before the enemy could take it. Met small arms, mortar, and heavy artillery fire returning to positions. 4 casualties from enemy artillery",
+          "source": "47th IR AAR/1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 25, 1944",
+          "dateSort": "1944-07-25",
+          "text": "OPERATION COBRA. At 0927 all troops pulled back to bomb-safety line. Light bombers went in first, followed by a full hour of heavy bombers. Due to a light breeze from the south, haze and target-marking smoke drifted toward American lines, causing bombers to drop some of their load on own units \u2014 casualties in the regiment. \"The greatest bombing.\" Dust and dirt rose hundreds of feet. 1st Bn started moving at 1100, reached the highway by 1400, and pushed south to (394661\u2013398660) / [~49.11\u00b0N, 1.25\u00b0W](https://www.google.com/maps?q=49.11182,-1.25367) by 2245. 3rd Armored and 1st Infantry rushed through the breach. H Company: 2 EM KIA by friendly bombs; 1 WIA by bomb fragments",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 26\u201329, 1944",
+          "dateSort": "1944-07-26",
+          "text": "Rapid advance with daily casualties. Jul 26: 14 WIA; 4 KIA, 17 WIA. Jul 27: ~4 KIA, 28 WIA. Maj. Bryant promoted to Regt. S-2; Lt. Langland returned as Bn S-2; Lt. Snyder became Bn S-3. Jul 28: Enemy planes bombed and strafed the area \u2014 31 casualties. Jul 29: Division in Corps reserve, 2.5 miles SE of Marigny. Anti-aircraft shell exploded on shed roof, injuring Pvt. Taylor and AT platoon leader. 1st Bn CP at (397390) / [~49.07\u00b0N, 1.21\u00b0W](https://www.google.com/maps?q=49.0669,-1.2100) *(grid too far from Orglandes anchor for formula conversion; located from \"2.5 miles SE of Marigny\")*",
+          "source": "1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-21",
+      "name": "Whittington Barracks, Lichfield, Staffordshire, England",
+      "lat": 52.677,
+      "lng": -1.789,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 19, 1944",
+          "dateSort": "1944-07-19",
+          "text": "AWOL at 2330 hrs. Six days after release from hospital, Henry went absent without leave from the 10th Replacement Depot at Lichfield \u2014 headquartered at Whittington Barracks (with a satellite staging camp at the Pheasey Estate), the principal U.S. Army replacement and disciplinary command in the UK (later notorious for the \"Lichfield case\" treatment-of-prisoners court-martial, 1945). The morning report documents the AWOL with timestamp",
+          "source": "[Morning Report, NARA Cat. 481125251 p.587](https://catalog.archives.gov/id/481125251?objectPage=587) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 25, 1944",
+          "dateSort": "1944-07-25",
+          "text": "Court-martial: convicted of AWOL. Trial held 6 days after the Jul 19 absence. The Jul 27 morning report (next entry) records the conviction date and the disposition; no separate Jul 25 morning report has been located. (Henry's only known disciplinary record.)",
+          "source": "[Morning Report, NARA Cat. 481125251 p.794](https://catalog.archives.gov/id/481125251?objectPage=794) (S18) (referenced)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Jul 27, 1944, 0745 hrs",
+          "dateSort": "1944-07-27",
+          "text": "Released from confinement at 0745; returned to duty. Two days of post-conviction confinement (Jul 25 \u2192 Jul 27) \u2014 the entire AWOL-and-conviction episode resolved in 8 days from start to finish. The case was disposed of locally and Henry remained in the replacement system rather than rejoining a combat unit. Henry retained his PFC rank \u2014 every subsequent morning report (Sep 1944 through discharge Jun 1945) lists him as PFC, and his Honorable Discharge at Fort Dix on Jun 24, 1945 records him as PFC. Reduction in grade was a standard element of any court-martial AWOL conviction at this period (the maximum punishment for a Summary Court-Martial included reduction by one grade); the fact that Henry's rank survived indicates the offense was disposed at the lowest level and treated as a minor infraction. The brief confinement (~2 days) is consistent with a Summary Court-Martial sentence, not a Special or General. He also retained eligibility for the Good Conduct Medal, which requires 3+ years of \"exemplary behavior, efficiency, and fidelity\" and which he received",
+          "source": "[Morning Report, NARA Cat. 481125251 p.794](https://catalog.archives.gov/id/481125251?objectPage=794) (S18)",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ],
+      "status": "detached"
+    },
+    {
+      "id": "europe-24",
+      "name": "Near Marigny, France",
+      "lat": 49.1,
+      "lng": -1.28,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 31, 1944",
+          "dateSort": "1944-07-31",
+          "text": "13 EM + 1 Officer replacements received. Each man received complete change of ODs. Capt. Balling assigned as company commander. Bn on 3-hour alert",
+          "source": "1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        },
+        {
+          "date": "Aug 1\u20134, 1944",
+          "dateSort": "1944-08-01",
+          "text": "Aug 1: Hot showers; inoculations; Bn moved to area between Le Parte au Villain and Legardt. Aug 2: 1st Bn passed through 1st Bn, 8th Infantry Regt; advanced on objectives. AP mines reported in trail. 2 KIA, 17 WIA. Aug 3: 3rd Bn passed through 1st Bn toward objective. 5 WIA. Aug 4: C Co patrol captured 6 prisoners from German 336th Division, 957th Regt; A Co captured 4 more. Advancing toward Fontenermont",
+          "source": "1st Bn Journal",
+          "campaign": "D-Day and Normandy (Jun\u2013Aug 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-28",
+      "name": "Meuse River, Belgium",
+      "lat": 50.4674,
+      "lng": 4.872,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 6, 1944",
+          "dateSort": "1944-09-06",
+          "text": "1st Bn attempted to cross the Meuse in row boats at 0200\u20130300. Engineers guided troops but a large portion of the Bn landed on a small island in the river. Received MG fire on the island and from the opposite bank. D Company crossed in assault boats under heavy fire; re-crossed under mortar fire. Both MG platoon leaders wounded. C Company suffered heavily: ~71 EM and 1 Officer captured on the island. Total 1st Bn casualties: 3 KIA, 10 WIA, 72 missing/captured",
+          "source": "D Co./1st Bn Journal",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 8\u201312, 1944",
+          "dateSort": "1944-09-08",
+          "text": "Rapid advance through Belgian cities",
+          "source": "D Co./H Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-25",
+      "name": "Le Mans, France",
+      "lat": 48.0061,
+      "lng": 0.1996,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 11, 1944",
+          "dateSort": "1944-09-11",
+          "text": "On rolls of the 10th Replacement Depot at Le Mans \u2014 the principal U.S. Army replacement hub in northwestern France in autumn 1944",
+          "source": "[Morning Report, NARA Cat. 570547057 p.2998](https://catalog.archives.gov/id/570547057?objectPage=2998) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 11, 1944",
+          "dateSort": "1944-09-11",
+          "text": "Assigned to 467th Replacement Company, 82nd Replacement Battalion (within the 10th Repl Depot structure)",
+          "source": "[Morning Report, NARA Cat. 569348927 p.675](https://catalog.archives.gov/id/569348927?objectPage=675) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 17, 1944",
+          "dateSort": "1944-09-17",
+          "text": "Still on rolls of 467th Repl Co, 82nd Repl Bn",
+          "source": "[Morning Report, NARA Cat. 569348927 p.637](https://catalog.archives.gov/id/569348927?objectPage=637) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 21, 1944",
+          "dateSort": "1944-09-21",
+          "text": "Listed on 10th Replacement Depot rolls (parent unit)",
+          "source": "[Morning Report, NARA Cat. 569352763 p.430](https://catalog.archives.gov/id/569352763?objectPage=430) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Oct 21, 1944",
+          "dateSort": "1944-10-21",
+          "text": "Received by 69th Replacement Battalion, billeted at 351st Replacement Company",
+          "source": "[Morning Report, NARA Cat. 573042159 p.1212](https://catalog.archives.gov/id/573042159?objectPage=1212) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Oct 28, 1944",
+          "dateSort": "1944-10-28",
+          "text": "Transferred to HQ 92nd Replacement Bn, 3rd Replacement Depot \u2014 the depot feeding the 9th Infantry Division on the German border",
+          "source": "[Morning Report, NARA Cat. 573027648 p.2372](https://catalog.archives.gov/id/573027648?objectPage=2372) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "detached"
+    },
+    {
+      "id": "europe-29",
+      "name": "Eupen, Belgium (50.63\u00b0N, 6.03\u00b0E) / German border",
+      "lat": 50.6328,
+      "lng": 6.0336,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 13, 1944",
+          "dateSort": "1944-09-13",
+          "text": "Crossed into Germany. Hostile population (former German territory)",
+          "source": "D Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-30",
+      "name": "Roetgen, Germany",
+      "lat": 50.6326,
+      "lng": 6.1964,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 14, 1944",
+          "dateSort": "1944-09-14",
+          "text": "Crossed the German border at Roetgen (grid 905285) at 0830. Entered the Siegfried Line. Penetrated well into the outer defenses. Worked through dense forest. Captured 41 prisoners. Noted camouflaged pillboxes (one built to look like a cottage). 1st Bn advanced to Zweifall (grid 955362 / [~50.71\u00b0N, 6.25\u00b0E](https://www.google.com/maps?q=50.7115,6.2478)), held up by blown bridge. Marched 14 miles. H Company: enemy attacked with tanks at 0730; 1 EM WIA",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-31",
+      "name": "Vicht (50.72\u00b0N, 6.28\u00b0E) / Mausbach / Schevenhutte",
+      "lat": 50.7167,
+      "lng": 6.2833,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 15\u201316, 1944",
+          "dateSort": "1944-09-15",
+          "text": "Sep 15: Plan to outflank Vicht from east. 3rd Bn engaged 350 enemy attempting to withdraw; 2nd Bn counterattacked by tank and infantry at 0900 \u2014 Mark V tank destroyed. 425 prisoners captured including a Colonel and 4 officers. Sep 16: 1st Bn entered Vicht at 1530, captured 100+ prisoners. 2nd Bn reached Krewinkel (grid 980410 / [~50.76\u00b0N, 6.27\u00b0E](https://www.google.com/maps?q=50.7562,6.2681)), captured ~95 prisoners. 3rd Bn contacted strong force 400 yards short of Schevenhutte (grid 005420 / [~50.76\u00b0N, 6.30\u00b0E](https://www.google.com/maps?q=50.7610,6.2997)). Regimental CP established at Vicht \u2014 remained there through October",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 17\u201319, 1944",
+          "dateSort": "1944-09-17",
+          "text": "Heavy counterattacks. Sep 17: 2nd Bn attacked by waves of enemy infantry with tanks, mortars, artillery from NE. 3rd Bn \"surrounded by enemy, but not seriously.\" 1st Bn moved to dominating ground (grid 994418 / [~50.76\u00b0N, 6.29\u00b0E](https://www.google.com/maps?q=50.7601,6.2879)) between 2nd and 3rd Bns. Sep 18: 3rd Bn counterattacked at 0130 from Gressenich direction; 2nd Bn moved back to reorganize. Sep 19: \"Heaviest enemy artillery barrage ever experienced\" at 0730. Supply lines stretched to breaking point. D Company: 5 EM wounded by enemy artillery on Sep 17 and 19",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 20\u201322, 1944",
+          "dateSort": "1944-09-20",
+          "text": "Defensive positions; constant enemy artillery, mortar, and tank fire. D Company 81mm mortars fired avg. 200 rounds/day (ammunition rationed). Sep 22: Major counterattack on 3rd Bn at Schevenhutte \u2014 preceded by \"biggest artillery preparation ever put on against the battalion.\" Positions overrun at 0640; restored by 0813. At least 1 full-strength enemy battalion attacked. Enemy casualties: 135+ dead counted in Schevenhutte, 35 wounded evacuated by US medics, 37 captured. 3rd Bn casualties: 7 KIA, 48 WIA (described as \"extremely light\" given scale of attack)",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 23\u201330, 1944",
+          "dateSort": "1944-09-23",
+          "text": "Continued defensive positions. Total losses Sep 14\u201330: 8 EM killed, 28 wounded, 1 officer wounded",
+          "source": "D Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-26",
+      "name": "\u00c9tampes, France",
+      "lat": 48.4341,
+      "lng": 2.1622,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Sep 21, 1944",
+          "dateSort": "1944-09-21",
+          "text": "Transferred to the 19th Replacement Depot at \u00c9tampes (~40 km south of Paris). The 19th Depot served primarily as a receiving station for hospital returnees \u2014 which is precisely why Henry, a recovered wounded man, was routed there",
+          "source": "[Morning Report, NARA Cat. 569352763 p.505](https://catalog.archives.gov/id/569352763?objectPage=505) (S18); [Ruppenthal, *Logistical Support of the Armies* II, ch. XI](https://www.ibiblio.org/hyperwar/USA/USA-E-Logistics2/USA-E-Logistics2-11.html)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 21, 1944",
+          "dateSort": "1944-09-21",
+          "text": "19th Repl Depot rolls (continued)",
+          "source": "[Morning Report, NARA Cat. 569352763 p.579](https://catalog.archives.gov/id/569352763?objectPage=579) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Sep 22, 1944",
+          "dateSort": "1944-09-22",
+          "text": "Assigned to HQ, 19th Replacement Depot",
+          "source": "[Morning Report, NARA Cat. 569736472 p.1057](https://catalog.archives.gov/id/569736472?objectPage=1057) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "detached"
+    },
+    {
+      "id": "europe-32",
+      "name": "H\u00fcrtgen Forest",
+      "lat": 50.75,
+      "lng": 6.28,
+      "track": "unit",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Oct 1\u201331, 1944",
+          "dateSort": "1944-10-01",
+          "text": "Holding positions on edge of H\u00fcrtgen Forest. Enemy shelling every few days; daily patrols. Bitter cold, rain, mud, some snow. Mortar ammunition rationed to as few as 16 rounds per week. Losses: 11 EM wounded",
+          "source": "D Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ]
+    },
+    {
+      "id": "europe-27",
+      "name": "Nord de Guerre Zone, \"Vight\" 1 mile E",
+      "lat": 50.66,
+      "lng": 6.24,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Oct 29, 1944",
+          "dateSort": "1944-10-29",
+          "text": "HENRY RETURNS TO THE 47th INFANTRY. After 135 days away from the regiment (Jun 16 \u2192 Oct 29) \u2014 through hospital, AWOL, court-martial, and a chain of three replacement depots \u2014 Henry rejoins the 47th in the German border zone. By this date the 47th had crossed the Siegfried Line at Roetgen (Sep 14), captured Vicht (Sep 16), and dug into defensive positions around Vicht/Schevenh\u00fctte at the edge of the H\u00fcrtgen Forest",
+          "source": "[Morning Report, NARA Cat. 572657393 p.2867](https://catalog.archives.gov/id/572657393?objectPage=2867) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Oct 31, 1944",
+          "dateSort": "1944-10-31",
+          "text": "Henry on active duty with the 47th Infantry \u2014 back on the regimental rolls. From this point forward Henry serves continuously with D Company through the rest of the war: H\u00fcrtgen Forest, Battle of the Bulge (Monschau), Roer crossing, Rhine crossing at Remagen, Ruhr Pocket, contact with the Russians at the Mulde, VE Day",
+          "source": "[Morning Report, NARA Cat. 572657393 p.2869](https://catalog.archives.gov/id/572657393?objectPage=2869) (S18)",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-33",
+      "name": "Near Vicht / Gressenich area",
+      "lat": 50.7167,
+      "lng": 6.2833,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 2\u201315, 1944",
+          "dateSort": "1944-11-02",
+          "text": "Three-day passes to Verviers or Paris began. Preparations for major attack: forward mortar positions dug, ammunition stockpiled",
+          "source": "D Co./H Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-34",
+      "name": "Gressenich, Germany",
+      "lat": 50.7667,
+      "lng": 6.2833,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 16, 1944",
+          "dateSort": "1944-11-16",
+          "text": "Major attack launched. Massive air bombardment at 1100 \u2014 \"greatest concentration of planes since St. Lo.\" D Company mortars fired 1,200+ rounds. Took Gressenich toward nightfall. H Company supported 16th Inf. Regt. and own 1st Bn.",
+          "source": "D Co./H Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Nov 17, 1944",
+          "dateSort": "1944-11-17",
+          "text": "Gressenich cleared by 1030 \u2014 Co C up west side, Co A center, Co B east. D Company took pillboxes; received multiple-rocket-launcher support for first time",
+          "source": "D Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-35",
+      "name": "Hill 187 / Hill 167",
+      "lat": 50.7954,
+      "lng": 6.2769,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 19\u201322, 1944",
+          "dateSort": "1944-11-19",
+          "text": "Bitter multi-day fight for Hill 187 (grid 985456) \u2014 enemy had direct observation on attacking troops crossing open ground. Nov 19: 1st Bn moved to Hill 232 (grid 997443 / [~50.78\u00b0N, 6.29\u00b0E](https://www.google.com/maps?q=50.7826,6.2903)); Co B assaulted Hill 187 but stopped by intense 88mm flat-trajectory fire. Nov 20: Co B failed again. Nov 21: Co C passed through Co B, reached western edge of Hill 187 but could not advance further \u2014 \"casualties were severe.\" Trees felled by shells made the woods impenetrable; supply and evacuation \"one of the utmost hazard.\" Casualties so severe that CG 1st Infantry Division ordered the Combat Team to consolidate at 1320; 17 battalions of corps artillery fired 3-minute concentration on Hill 187 at 1615. Ordered to report effective strength. Nov 22: Patrols found Hills 187 and 167 (grid 991462 / [~50.80\u00b0N, 6.28\u00b0E](https://www.google.com/maps?q=50.8004,6.2832)) unoccupied \u2014 enemy had withdrawn overnight. Both hills occupied by platoons",
+          "source": "D Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-36",
+      "name": "Eschweiler, Germany",
+      "lat": 50.8167,
+      "lng": 6.2667,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 23, 1944",
+          "dateSort": "1944-11-23",
+          "text": "Thanksgiving Day. Despite being spread across miles of front, kitchen supplied every man with full dinner: roast turkey, mashed potatoes, dressing, cauliflower, carrots and peas, hot rolls, apple and apricot pie, chocolate cake, and coffee",
+          "source": "D Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-37",
+      "name": "Nothberg / Hucheln",
+      "lat": 50.8055,
+      "lng": 6.2765,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 23\u201325, 1944",
+          "dateSort": "1944-11-23",
+          "text": "2nd Bn moved through Gressenich and Nothberg (grid 985467) to Hucheln (grid 000474 / [~50.81\u00b0N, 6.29\u00b0E](https://www.google.com/maps?q=50.8108,6.2925)) \u2014 practically every house defended with grenades. Co K occupied fortified factory at Bovenberg after heavy 8\" howitzer concentrations. 1st Bn went into regimental reserve",
+          "source": "47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-38",
+      "name": "Frenzerberg Castle",
+      "lat": 50.8231,
+      "lng": 6.3125,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 26\u201328, 1944",
+          "dateSort": "1944-11-26",
+          "text": "Assault on fortified Frenzerberg Castle (grid 019489). Nov 26: Co K took SW corner; 2nd Bn reached castle at 2100. 1st Bn reduced strongpoint at (grid 022478 / [~50.81\u00b0N, 6.31\u00b0E](https://www.google.com/maps?q=50.8131,6.3157)) under smoke screen by 1800. Nov 27: Castle shelled all day \u2014 walls too thick to breach. At 1700, enemy commander requested truce to evacuate wounded; PW interrogator tried to effect surrender but failed. 11 seriously wounded evacuated. Nov 28: Co G assaulted the strongpoint at 0900; all buildings cleared by 1030. 1st Bn relieved by 1st Infantry Division elements. H Company: fierce hand-to-hand combat with German paratroopers",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-39",
+      "name": "Verviers / Elsenborn, Belgium",
+      "lat": 50.4616,
+      "lng": 6.2001,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Nov 29 \u2013 Dec 6, 1944",
+          "dateSort": "1944-11-29",
+          "text": "Pulled out of the line. Rest camp at Verviers; showers, clean clothes, passes. Moved to Camp Elsenborn (grid 902085) in V Corps reserve. Liberal pass policy, re-equipping. Assigned mission to counterattack any enemy penetration in 99th Infantry Division sector \u2014 4 counter-penetration plans prepared",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-40",
+      "name": "Langerwehe / Luchem / Duren area, Germany",
+      "lat": 50.8,
+      "lng": 6.4833,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Dec 7\u201316, 1944",
+          "dateSort": "1944-12-07",
+          "text": "1st Bn to Luchem (grid 038490 / [~50.82\u00b0N, 6.33\u00b0E](https://www.google.com/maps?q=50.8227,6.3329)), attached to 60th Infantry. Dec 10: 1st Bn seized objective by 0930; counterattacked at 1440, repulsed. Dec 11: 1st Bn reverted to 47th Infantry control. Defensive positions; D Company fired captured German 120mm mortars at Duren. Air force bombed Duren daily",
+          "source": "D Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-41",
+      "name": "Mutzenich, Germany",
+      "lat": 50.5606,
+      "lng": 6.2211,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Dec 16\u201317, 1944",
+          "dateSort": "1944-12-16",
+          "text": "BATTLE OF THE BULGE begins. Dec 16 late afternoon: word received of enemy counteroffensive in V and VIII Corps sectors. 1st and 2nd Bns alerted. Dec 17 0500: warning of enemy paratroopers expected SW of Aachen at 0530. 47th CT ordered to move immediately to Eupen, attached to V Corps effective 1145. Motor movement began at 1400; closed into Muzen (grid 925195) just after midnight. Mission: prevent enemy penetration at Monschau-Hofen-Kalterherberg",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-42",
+      "name": "Monschau / Hofen, Germany",
+      "lat": 50.5547,
+      "lng": 6.2428,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Dec 18\u201319, 1944",
+          "dateSort": "1944-12-18",
+          "text": "Dec 18: Enemy attacked at Hofen at 0430 \u2014 under control by 0600. 3rd Bn, 395th Infantry attacked by infantry, tanks, and planes, repulsed by 0845. Enemy penetrated to Kalterherberg but original lines restored by 1230. 1st Bn placed one company on high ground west of Monschau (grid 938187 / [~50.55\u00b0N, 6.24\u00b0E](https://www.google.com/maps?q=50.5524,6.2354)). Dec 19: 47th CT with massive attachments \u2014 38th Cavalry Squadron, 3rd Bn 395th Inf, 196th FA Bn, 99th Recon Troop, 2nd Bn 39th Inf \u2014 defended the Monschau-Hofen sector. Company captured paratroopers",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Dec 20, 1944",
+          "dateSort": "1944-12-20",
+          "text": "\"This has become the Battle of the Bulge and we are holding the northern hinge.\"",
+          "source": "D Co.",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Dec 21\u201324, 1944",
+          "dateSort": "1944-12-21",
+          "text": "Defensive positions; improving with concertina and barbed wire. Demolitions prepared for all bridges, culverts, and roads. Active patrolling. Intermittent artillery of all calibres. Enemy buzz bombs flew over nightly. Bitterly cold with blizzards. Dec 24: 2nd Bn moved to high ground E/SE of Kalterherberg",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Dec 25, 1944",
+          "dateSort": "1944-12-25",
+          "text": "Christmas Day in the Bulge. 1st Bn defensive positions: Co A held high ground NE of Monschau (grid 943197\u2013945185 / [~50.56\u00b0N, 6.24\u00b0E](https://www.google.com/maps?q=50.5611,6.2405) to [~50.54\u00b0N, 6.24\u00b0E](https://www.google.com/maps?q=50.5399,6.2444)); Co B held high ground S and E along main SE road (grid 945184 to road junction 947174 / [~50.54\u00b0N, 6.24\u00b0E](https://www.google.com/maps?q=50.5399,6.2444)); platoon Co C blocking draw at (grid 945185). 2nd Bn around Kalterherberg (grid 929150 / [~50.52\u00b0N, 6.23\u00b0E](https://www.google.com/maps?q=50.5170,6.2259))",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Jan 26, 1945",
+          "dateSort": "1945-01-26",
+          "text": "1st Bn relieved from front-line positions. \"Companies A, B, and D assembled in vicinity of (grid 939182 / [~50.55\u00b0N, 6.24\u00b0E](https://www.google.com/maps?q=50.5477,6.2367)).\" D Company confirmed present with 1st Bn at Monschau. Preparations for attack",
+          "source": "1st Bn Journal",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-43",
+      "name": "Monschau / Kalterherberg",
+      "lat": 50.5167,
+      "lng": 6.2667,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Dec 26\u201331, 1944",
+          "dateSort": "1944-12-26",
+          "text": "Static defense. Active patrolling. Dec 27: M/Sgt. I.O. Adams killed. Dec 30: 1st Bn patrol ambushed enemy patrol near Co A area \u2014 at 1910 encountered German patrol of 6+ men. Dec 31: 1st Bn patrol at 0300 ambushed enemy NE of sector, killing 5, wounding several",
+          "source": "D Co./H Co./47th IR AAR",
+          "campaign": "Belgium and the Siegfried Line (Sep\u2013Dec 1944)"
+        },
+        {
+          "date": "Jan 1\u201325, 1945",
+          "dateSort": "1945-01-01",
+          "text": "Held defensive positions under heavy long-range artillery (railroad guns). 1st Bn defending E/NE of Monschau (grid 943184 / [~50.55\u00b0N, 6.24\u00b0E](https://www.google.com/maps?q=50.5524,6.2354)), from (943197) to (946174). Bitterly cold; trench foot evacuations. Built sleds to haul equipment through deep snow. Camouflage snow suits and white-painted vehicles issued. 1st Bn CO: Lt. Col. James D. Allgood (replaced Major Schmidt, Nov 13, 1944)",
+          "source": "D Co./H Co./1st Bn Journal",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-44",
+      "name": "Hofen / Alzen, Germany",
+      "lat": 50.56,
+      "lng": 6.23,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jan 29\u201331, 1945",
+          "dateSort": "1945-01-29",
+          "text": "47th Infantry attacked at 0400 on Jan 30. Battalion advanced three miles; took Alzen. Jan 31: 1st Bn cleared pillboxes at (grid 970146 / [~50.51\u00b0N, 6.27\u00b0E](https://www.google.com/maps?q=50.5125,6.2713)) and (grid 973143 / [~50.51\u00b0N, 6.27\u00b0E](https://www.google.com/maps?q=50.5096,6.2747))",
+          "source": "D Co./H Co./1st Bn Journal",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-45",
+      "name": "Rohren / Dreiborn / Wollseifen, Germany",
+      "lat": 50.5261,
+      "lng": 6.4369,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 2\u20135, 1945",
+          "dateSort": "1945-02-02",
+          "text": "Continued advance. Company CP at Hitler's youth camp, Ordensburg Vogelsang ([50.53\u00b0N, 6.44\u00b0E](https://www.google.com/maps?q=50.5261,6.4369)), on the Urft River. Enemy across the ice-covered river",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-46",
+      "name": "Urft River",
+      "lat": 50.6,
+      "lng": 6.4,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 6, 1945",
+          "dateSort": "1945-02-06",
+          "text": "81mm mortars fired 400+ rounds to break ice on river ahead of planned crossing",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-47",
+      "name": "Mausbach, Germany",
+      "lat": 50.7667,
+      "lng": 6.3167,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 18\u201327, 1945",
+          "dateSort": "1945-02-18",
+          "text": "Preparations to cross the Roer River",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-48",
+      "name": "Nideggen, Germany",
+      "lat": 50.6917,
+      "lng": 6.4833,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Feb 28, 1945",
+          "dateSort": "1945-02-28",
+          "text": "Crossed the Roer River on foot over a pontoon bridge",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-49",
+      "name": "Remagen, Germany",
+      "lat": 50.5781,
+      "lng": 7.2286,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 8, 1945",
+          "dateSort": "1945-03-08",
+          "text": "CROSSED THE RHINE at Remagen via the Ludendorf Bridge (seized by 9th Armored Division the day before). Engineers still repairing bridge under fire. Set up defensive positions in Orsberg. Intense enemy air and artillery attacks on the bridge",
+          "source": "D Co./H Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-50",
+      "name": "Bruckhausen, Germany",
+      "lat": 51.48,
+      "lng": 6.75,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 9, 1945",
+          "dateSort": "1945-03-09",
+          "text": "B Company beat back a counterattack \u2014 mortars largely responsible. Largest rifle company casualties in battalion history",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-51",
+      "name": "Ohlenberg / Notscheid area",
+      "lat": 50.55,
+      "lng": 7.25,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 10\u201318, 1945",
+          "dateSort": "1945-03-10",
+          "text": "Tremendous enemy pressure on the bridgehead as Germans concentrated forces. Heavy fighting. D Company: 8 men wounded; 1 Lt. killed in jeep accident. Ludendorf Bridge collapsed Mar 16 (structural failure) but three pontoon bridges maintained supply",
+          "source": "D Co./H Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-52",
+      "name": "Neustadt, Germany",
+      "lat": 50.5,
+      "lng": 7.4333,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Mar 25, 1945",
+          "dateSort": "1945-03-25",
+          "text": "Night attack; only slight resistance. Enemy beginning to break",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-53",
+      "name": "Berleberg, Germany",
+      "lat": 51.0547,
+      "lng": 8.3892,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 1\u20133, 1945",
+          "dateSort": "1945-04-01",
+          "text": "MG section encountered hidden enemy; captured 7, wounded 2 in firefight",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-54",
+      "name": "Niedersfeld, Germany",
+      "lat": 51.2667,
+      "lng": 8.5667,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 5, 1945",
+          "dateSort": "1945-04-05",
+          "text": "Entering town at 0300, jeeps shelled by enemy \u2014 1 jeep destroyed, 16 men wounded",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-55",
+      "name": "Wiemeringhausen \u2192 Assinghausen \u2192 Velmede",
+      "lat": 51.25,
+      "lng": 8.55,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 6\u20139, 1945",
+          "dateSort": "1945-04-06",
+          "text": "Continued advance; light opposition. Ruhr Pocket operations",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-56",
+      "name": "Elpe, Germany",
+      "lat": 51.25,
+      "lng": 8.4167,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 10, 1945",
+          "dateSort": "1945-04-10",
+          "text": "Ruhr Pocket sealed. Relieved by 5th Infantry Division",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-57",
+      "name": "Wolfsberg (51.65\u00b0N, 11.03\u00b0E) \u2192 Harzgerode (51.65\u00b0N, 11.13\u00b0E) \u2192 Ballenstedt (51.72\u00b0N, 11.23\u00b0E), Germany",
+      "lat": 51.65,
+      "lng": 11.0333,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 13\u201319, 1945",
+          "dateSort": "1945-04-13",
+          "text": "Series of attacks through the Harz Mountains; scattered resistance. Taking town after town",
+          "source": "D Co./H Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-58",
+      "name": "Torten (outskirts of Dessau), Germany",
+      "lat": 51.8167,
+      "lng": 12.2167,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 24, 1945",
+          "dateSort": "1945-04-24",
+          "text": "Moved 56 miles to the Mulde River \u2014 ~45 miles from Berlin. Set up defensive positions awaiting contact with the Russian Army",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-59",
+      "name": "Mulde River, east bank",
+      "lat": 51.75,
+      "lng": 12.6,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Apr 26, 1945",
+          "dateSort": "1945-04-26",
+          "text": "Motorized patrol across the Mulde captured a garrison of 250 enemy; patrol then captured by an SS division but released. Returned with 1,500+ prisoners",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        },
+        {
+          "date": "Apr 27\u201328, 1945",
+          "dateSort": "1945-04-27",
+          "text": "Daily patrols bringing in 250\u2013300 prisoners each day. Enemy surrendering rather than face the Russians",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        },
+        {
+          "date": "Apr 29, 1945",
+          "dateSort": "1945-04-29",
+          "text": "Made contact with the Russian Army approximately 8 miles east of the Mulde River",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-60",
+      "name": "Torten, Germany",
+      "lat": 51.83,
+      "lng": 12.27,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "May 1\u20138, 1945",
+          "dateSort": "1945-05-01",
+          "text": "Whole German armies surrendering. Czech uprising; both Russian and American armies driving on Prague. Daily patrols \u2014 no enemy anywhere",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        },
+        {
+          "date": "May 9, 1945",
+          "dateSort": "1945-05-09",
+          "text": "VE DAY \u2014 War in Europe officially ended at 0001. Battalion ceremony. Described as \"nothing but a let down\"",
+          "source": "D Co.",
+          "campaign": "The Final Push \u2014 Rhine to the Elbe (Jan\u2013May 1945)"
+        },
+        {
+          "date": "May 10\u201315, 1945",
+          "dateSort": "1945-05-10",
+          "text": "Cleaned equipment. Transferred from 1st Army to 9th Army, then to 3rd Army",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-61",
+      "name": "Bavaria, Germany",
+      "lat": 49.0,
+      "lng": 11.5,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "May 16, 1945",
+          "dateSort": "1945-05-16",
+          "text": "Moved ~250 miles down Hitler's Autobahn into Bavaria; bivouacked ~40 miles from Munich",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        },
+        {
+          "date": "May 17, 1945",
+          "dateSort": "1945-05-17",
+          "text": "First group of men departed under redeployment (going home)",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        },
+        {
+          "date": "Jun 6, 1945",
+          "dateSort": "1945-06-06",
+          "text": "First anniversary of D-Day. Holiday; swimming, baseball, rest",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        },
+        {
+          "date": "Jun 7, 1945",
+          "dateSort": "1945-06-07",
+          "text": "22 men from D Company decorated with Bronze Stars for Heroic Achievement, presented by Maj. Gen. Louis A. Craig, XX Corps (Twentieth Corps, Third Army). Craig formerly commanded the 9th Infantry Division (Aug 1944\u2013May 1945); by June 1945 he commanded XX Corps",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-62",
+      "name": "Hohenwart / Scheyern, Bavaria",
+      "lat": 48.4833,
+      "lng": 11.45,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "May 24, 1945",
+          "dateSort": "1945-05-24",
+          "text": "Moved to new camp; began building barracks, mess halls, outdoor movie theatre. Softball and volleyball organized; daily swimming",
+          "source": "D Co./H Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-63",
+      "name": "Bavaria \u2192 Furstenfeldbruck",
+      "lat": 48.1789,
+      "lng": 11.2547,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 13\u201323, 1945",
+          "dateSort": "1945-06-13",
+          "text": "Moved to former German Luftwaffe barracks. Assigned to guard several thousand SS troops in stockade. High-point men cycling out for separation to civilian life",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-64",
+      "name": "Fort Dix, New Jersey",
+      "lat": 40.0157,
+      "lng": -74.6185,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jun 24, 1945",
+          "dateSort": "1945-06-24",
+          "text": "HONORABLE DISCHARGE. Henry released from active duty. Home address: 733 Crandall Ave., Youngstown, Ohio",
+          "source": "OMPF Certification of Military Service",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        }
+      ],
+      "status": "with-unit"
+    },
+    {
+      "id": "europe-65",
+      "name": "Dachau, Germany",
+      "lat": 48.2603,
+      "lng": 11.4342,
+      "track": "henry",
+      "hospital": false,
+      "events": [
+        {
+          "date": "Jul 7, 1945",
+          "dateSort": "1945-07-07",
+          "text": "Moved to Dachau \u2014 barracks previously used by SS troops immediately outside the concentration camp. Guard duty at Dachau and Furstenfeldbruck",
+          "source": "D Co.",
+          "campaign": "Occupation and Garrison Duty (May\u2013Jul 1945)"
+        }
+      ],
+      "status": "with-unit"
+    }
+  ]
+}
+</script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ─── Marker construction ───────────────────────────────────────────
+// Whether a track's stops get their color from `statuses` (a person/subject
+// track with a with-unit/detached-style split) or always use the track's own
+// fixed color (a peer/type track, e.g. "unit", or gary-research's settlement
+// types). Configurable per track (`tracks.<key>.colorByStatus`); falls back
+// to the pre-existing "unit" special case for maps built before this flag
+// existed, so older data needs no changes.
+function trackUsesOwnColor(trackKey, track) {
+  if (track && typeof track.colorByStatus === 'boolean') return !track.colorByStatus;
+  return trackKey === 'unit';
+}
+
+function trackColorsByStatus(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  return !trackUsesOwnColor(stop.track, track);
+}
+
+function resolveStopColor(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  if (!trackColorsByStatus(stop)) {
+    return (track && track.color) || '#888';
+  }
+  const statusKey = stop.status || 'with-unit';
+  const status = DATA.statuses && DATA.statuses[statusKey];
+  if (status) return status.color;
+  return (track && track.color) || '#888';
+}
+
+// Groups a stop's events by an optional per-event `family` tag and returns a
+// small HTML label listing each family's earliest–latest date range (using
+// each event's display-friendly `date` string, not dateSort, so approximate
+// dates like "~1650s" render as written). Returns null if no event carries a
+// `family` tag — callers should skip showing a chip entirely in that case.
+function buildOccupancyChip(stop) {
+  const families = {};
+  (stop.events || []).forEach(ev => {
+    if (!ev.family) return;
+    if (!families[ev.family]) families[ev.family] = { earliest: ev, latest: ev };
+    else {
+      if (ev.dateSort < families[ev.family].earliest.dateSort) families[ev.family].earliest = ev;
+      if (ev.dateSort > families[ev.family].latest.dateSort) families[ev.family].latest = ev;
+    }
+  });
+  const names = Object.keys(families);
+  if (!names.length) return null;
+
+  const lines = names.map(name => {
+    const { earliest, latest } = families[name];
+    const range = earliest === latest ? earliest.date : `${earliest.date}–${latest.date}`;
+    return `<div class="family-chip-line"><strong>${name}</strong> <span class="family-chip-range">(${range})</span></div>`;
+  });
+  return `<div class="family-chip-inner">${lines.join('')}</div>`;
+}
+
+// Non-interactive divIcon marker carrying the chip HTML, positioned just off
+// the stop's own marker. Kept as a separate map layer (not bindTooltip) so it
+// doesn't conflict with the marker's own hover-name tooltip.
+function buildChipMarker(stop, chipHtml) {
+  const icon = L.divIcon({
+    className: 'family-chip-icon',
+    html: chipHtml,
+    iconSize: null,
+    iconAnchor: [-14, 10]
+  });
+  return L.marker([stop.lat, stop.lng], { icon, interactive: false });
+}
+
+function buildCircleMarker(stop) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const radius = (track && track.radius) || 7;
+  const color = resolveStopColor(stop);
+  const marker = L.circleMarker([stop.lat, stop.lng], {
+    radius: radius,
+    fillColor: stop.highlight ? '#b45309' : color,
+    color: stop.highlight ? '#78350f' : '#fff',
+    weight: stop.highlight ? 3 : 2,
+    opacity: 1,
+    fillOpacity: stop.highlight ? 0.9 : 0.85
+  });
+  marker.bindPopup(buildPopup(stop));
+  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -radius] });
+  return marker;
+}
+
+function buildHospitalMarker(stop) {
+  const color = resolveStopColor(stop);
+  const icon = L.divIcon({
+    className: '',
+    html: `<div class="hospital-marker" style="background:${color}; width:18px; height:18px;"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
+  });
+  const marker = L.marker([stop.lat, stop.lng], { icon });
+  marker.bindPopup(buildPopup(stop));
+  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -9] });
+  return marker;
+}
+
+function buildMarkerForStop(stop) {
+  return stop.hospital ? buildHospitalMarker(stop) : buildCircleMarker(stop);
+}
+
+// Faint, non-interactive placeholder for a stop the timeline slider hasn't reached yet.
+// Deliberately has no bindPopup/bindTooltip — only flips to a full marker once revealed.
+function buildGhostMarker(stop) {
+  return L.circleMarker([stop.lat, stop.lng], {
+    radius: 5,
+    fillColor: '#999',
+    color: '#999',
+    weight: 1,
+    opacity: 0.3,
+    fillOpacity: 0.3,
+    interactive: false
+  });
+}
+
+</script>
+<script>
+// ─── Popup construction ─────────────────────────────────────────────
+function buildPopup(stop) {
+  let html = `<div class="popup-title">${stop.name}</div>`;
+
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const statusKey = trackColorsByStatus(stop) ? (stop.status || 'with-unit') : null;
+  const status = statusKey && DATA.statuses && DATA.statuses[statusKey];
+  const badgeColor = resolveStopColor(stop);
+  const badgeLabel = status ? status.label : (track ? track.label : stop.track);
+  html += `<span class="popup-badge" style="background:${badgeColor}">${badgeLabel}</span>`;
+
+  // Flat family tags — for stops with no per-event `family` data yet (see SCHEMA.md
+  // "Family/date chips"); a project with no families concept just omits stop.families.
+  if (stop.families && stop.families.length) {
+    html += '<div class="popup-families">';
+    stop.families.forEach(f => {
+      const color = (DATA.familyColors && DATA.familyColors[f]) || '#666';
+      html += `<span class="popup-family-tag" style="background:${color}">${f}</span>`;
+    });
+    html += '</div>';
+  }
+
+  // Static prose, for stops without a dated events[] yet.
+  if (stop.description) {
+    html += `<div class="popup-desc">${stop.description}</div>`;
+  }
+
+  const events = (stop.events || []).slice().sort((a, b) => {
+    return (a.dateSort || '').localeCompare(b.dateSort || '');
+  });
+
+  if (events.length) {
+    html += '<ul class="popup-events">';
+    events.forEach(ev => {
+      html += '<li class="popup-event">';
+      html += `<div class="popup-event-date">${ev.date}</div>`;
+      if (ev.campaign) html += `<div class="popup-event-campaign">${ev.campaign}</div>`;
+      html += `<div class="popup-event-text">${ev.text}</div>`;
+      if (ev.source) html += `<div class="popup-event-source">${ev.source}</div>`;
+      html += '</li>';
+    });
+    html += '</ul>';
+  }
+
+  // Generic outbound links (e.g. gary-research's per-person worksheet writeups,
+  // or a link back to a related static page like sp-houses.html).
+  if (stop.links && stop.links.length) {
+    stop.links.forEach(link => {
+      html += `<a class="popup-link" href="${link.href}" target="_blank">${link.label}</a>`;
+    });
+  }
+
+  return html;
+}
+
+</script>
+<script>
+// ─── Legend + track toggles ─────────────────────────────────────────
+function buildLegend() {
+  const legendEl = document.getElementById('legendItems');
+  legendEl.innerHTML = '';
+
+  if (DATA.statuses) {
+    Object.values(DATA.statuses).forEach(s => {
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.label}</div>`;
+    });
+  }
+
+  // Tracks that always use their own fixed color (colorByStatus: false, or the
+  // legacy "unit" track) get their own legend line — their color never shows
+  // up via `statuses`. Covers both dad_army's "unit" track and a project like
+  // gary-research's that has several peer tracks and no statuses at all.
+  Object.entries(DATA.tracks || {}).forEach(([key, track]) => {
+    if (trackUsesOwnColor(key, track)) {
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${track.color}"></div>${track.label}</div>`;
+    }
+  });
+
+  if ((DATA.stops || []).some(s => s.hospital)) {
+    legendEl.innerHTML += `<div class="legend-item"><div class="legend-cross" style="background:#555"></div>Hospital stay</div>`;
+  }
+}
+
+function buildTrackToggles() {
+  const el = document.getElementById('trackToggles');
+  el.innerHTML = '';
+  if (!DATA.tracks) return;
+  Object.keys(DATA.tracks).forEach(key => {
+    const t = DATA.tracks[key];
+    const label = document.createElement('label');
+    label.className = 'layer-toggle';
+    label.innerHTML = `<input type="checkbox" checked data-track="${key}"> ${t.label}`;
+    label.querySelector('input').addEventListener('change', (e) => {
+      toggleTrack(key, e.target.checked);
+    });
+    el.appendChild(label);
+  });
+}
+
+</script>
+<script>
+// ─── Data loading + map init ────────────────────────────────────────
+let DATA = null;
+let map = null;
+let allStops = []; // { stop, track, firstDateSort, revealedMarker, ghostMarker, currentlyShownAs }
+const trackVisible = {};
+const state = { currentDateSort: null };
+let playInterval = null;
+
+async function loadData() {
+  // Prefer inline data (works on file://). Fall back to fetch for live editing via http://.
+  const inlineEl = document.getElementById('mapData');
+  const inlineText = inlineEl ? inlineEl.textContent.trim() : '';
+  if (inlineText && inlineText.startsWith('{')) {
+    DATA = JSON.parse(inlineText);
+  } else {
+    const resp = await fetch('data.json');
+    DATA = await resp.json();
+  }
+  buildMap();
+}
+
+// events[] isn't guaranteed sorted by the schema (popup.js sorts defensively too),
+// so compute the earliest date rather than trusting events[0]. A stop can have
+// no events[] at all (e.g. gary-research places with only a static description) —
+// null means "not date-gated," handled in applyVisibility below.
+function stopEarliestDateSort(stop) {
+  if (!stop.events || !stop.events.length) return null;
+  return stop.events.map(e => e.dateSort).sort()[0];
+}
+
+function buildMap() {
+  document.getElementById('mapTitle').textContent = (DATA.meta && DATA.meta.title) || 'History Map';
+  document.getElementById('mapSubtitle').textContent = (DATA.meta && DATA.meta.subtitle) || '';
+
+  const center = (DATA.meta && DATA.meta.defaultCenter) || [0, 0];
+  const zoom = (DATA.meta && DATA.meta.defaultZoom) || 6;
+
+  map = L.map('map', { center, zoom, zoomControl: false });
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  map.panBy([-140, 0], { animate: false });
+
+  (DATA.stops || []).forEach(stop => {
+    const trackKey = stop.track || 'default';
+    if (!(trackKey in trackVisible)) trackVisible[trackKey] = true;
+    const chipHtml = buildOccupancyChip(stop);
+    allStops.push({
+      stop,
+      track: trackKey,
+      firstDateSort: stopEarliestDateSort(stop),
+      revealedMarker: buildMarkerForStop(stop),
+      ghostMarker: buildGhostMarker(stop),
+      chipMarker: chipHtml ? buildChipMarker(stop, chipHtml) : null,
+      currentlyShownAs: null
+    });
+  });
+
+  buildLegend();
+  buildTrackToggles();
+  setupTimeline();
+  setupChipVisibility();
+}
+
+// Chips only show above a configurable zoom (avoids clutter at country/region
+// scale); maps with no family-tagged events never produce chip markers at all,
+// so this is a no-op for them regardless.
+function setupChipVisibility() {
+  const minZoom = DATA.meta && DATA.meta.chipMinZoom;
+  if (typeof minZoom !== 'number') return;
+  const update = () => {
+    document.body.classList.toggle('hide-chips', map.getZoom() < minZoom);
+  };
+  map.on('zoomend', update);
+  update();
+}
+
+// Combines track-toggle visibility with slider position into one of three states
+// per stop: hidden (track off), ghost (not yet reached), revealed (fully shown).
+// A stop with no dated events (firstDateSort === null) is never date-gated —
+// it's revealed whenever its track is visible, same as before the slider existed.
+function applyVisibility() {
+  allStops.forEach(entry => {
+    const wantState = !trackVisible[entry.track] ? null
+      : entry.firstDateSort === null ? 'revealed'
+      : entry.firstDateSort <= state.currentDateSort ? 'revealed'
+      : 'ghost';
+    if (entry.currentlyShownAs === wantState) return;
+    if (entry.currentlyShownAs) {
+      map.removeLayer(entry.currentlyShownAs === 'ghost' ? entry.ghostMarker : entry.revealedMarker);
+      if (entry.currentlyShownAs === 'revealed' && entry.chipMarker) map.removeLayer(entry.chipMarker);
+    }
+    if (wantState) {
+      (wantState === 'ghost' ? entry.ghostMarker : entry.revealedMarker).addTo(map);
+      if (wantState === 'revealed' && entry.chipMarker) entry.chipMarker.addTo(map);
+    }
+    entry.currentlyShownAs = wantState;
+  });
+}
+
+function toggleTrack(trackKey, visible) {
+  trackVisible[trackKey] = visible;
+  applyVisibility();
+}
+
+// Parse YYYY-MM-DD manually and build a local-time Date — new Date(dateSortString)
+// parses as UTC midnight, which can display as the previous day west of Greenwich.
+function formatDateSort(dateSort) {
+  const [y, m, d] = dateSort.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+function setupTimeline() {
+  const uniqueDates = Array.from(new Set(
+    allStops.flatMap(entry => (entry.stop.events || []).map(e => e.dateSort))
+  )).sort();
+
+  const slider = document.getElementById('timelineSlider');
+  const dateLabel = document.getElementById('timelineDate');
+
+  slider.min = 0;
+  slider.max = uniqueDates.length - 1;
+  slider.value = slider.max;
+  state.currentDateSort = uniqueDates[slider.value];
+  dateLabel.textContent = formatDateSort(state.currentDateSort);
+
+  slider.addEventListener('input', () => {
+    state.currentDateSort = uniqueDates[slider.value];
+    dateLabel.textContent = formatDateSort(state.currentDateSort);
+    applyVisibility();
+  });
+
+  document.getElementById('timelinePlayBtn').addEventListener('click', () => togglePlay(slider));
+
+  applyVisibility();
+}
+
+function togglePlay(slider) {
+  const btn = document.getElementById('timelinePlayBtn');
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+    btn.innerHTML = '&#9654;';
+    return;
+  }
+  btn.innerHTML = '&#10074;&#10074;';
+  playInterval = setInterval(() => {
+    const next = Number(slider.value) + 1;
+    if (next > Number(slider.max)) {
+      clearInterval(playInterval);
+      playInterval = null;
+      btn.innerHTML = '&#9654;';
+      return;
+    }
+    slider.value = next;
+    slider.dispatchEvent(new Event('input'));
+  }, 600);
+}
+
+function togglePanel() {
+  const panel = document.getElementById('sidePanel');
+  const btn = document.querySelector('.panel-toggle');
+  panel.classList.toggle('hidden');
+  btn.classList.toggle('panel-hidden');
+  setTimeout(() => map.invalidateSize(), 350);
+}
+
+loadData();
+
+</script>
+</body>
+</html>
