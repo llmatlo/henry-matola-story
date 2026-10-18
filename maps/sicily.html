@@ -14,12 +14,17 @@
 <meta name="twitter:title" content="Henry Matola — Sicily (WWII Service Map)">
 <meta name="twitter:description" content="D Company's fight through Troina, Cesaro, and Randazzo — Operation Husky.">
 <meta name="twitter:image" content="https://llmatlo.github.io/henry-matola-story/images/henry-portrait.jpg">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f5f0eb; color: #3b3228; }
 
 #map { width: 100%; height: 100vh; }
+#map.map-load-error {
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; color: #dc2626; font-size: 16px; text-align: center;
+}
 
 /* Top bar */
 .top-bar {
@@ -37,21 +42,40 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 .top-bar .subtitle {
   font-size: 12px; color: #c7ccd1;
 }
+.lang-toggle {
+  margin-left: auto; align-self: center; flex-shrink: 0;
+  gap: 0; border: 1px solid #7f8c9a; border-radius: 4px; overflow: hidden;
+}
+.lang-btn {
+  background: transparent; color: #c7ccd1; border: none; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1; padding: 5px 9px;
+}
+.lang-btn + .lang-btn { border-left: 1px solid #7f8c9a; }
+.lang-btn:hover { color: #fff; }
+.lang-btn.active { background: #d97706; color: #fff; }
+@media (max-width: 480px) {
+  .top-bar { padding: 8px 12px; align-items: center; }
+  .top-bar h1 { font-size: 14px; white-space: normal; }
+  .top-bar .subtitle { display: none; }
+  .lang-btn { padding: 4px 7px; font-size: 11px; }
+}
 
 /* Timeline bar */
 .timeline-bar {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000;
   background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
   border-top: 2px solid #7f8c9a;
-  padding: 8px 20px 10px;
+  padding: 10px 20px;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
 }
+.timeline-controls { display: flex; align-items: center; gap: 14px; }
+/* Optional caption (meta.timelineCaption) above the controls; map.js adds
+   body.has-timeline-caption so the side panel clears the taller bar. */
 .timeline-caption {
   font-size: 11px; color: #c7ccd1; text-align: center; margin-bottom: 6px;
 }
-.timeline-controls {
-  display: flex; align-items: center; gap: 14px;
-}
+body.has-timeline-caption .timeline-bar { padding-top: 8px; }
+body.has-timeline-caption .side-panel { bottom: 76px; }
 .timeline-play-btn {
   background: #faf9f7; border: 1px solid #d8d4cc;
   color: #6b6355; padding: 6px 10px; cursor: pointer;
@@ -69,7 +93,7 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 
 /* Side panel */
 .side-panel {
-  position: absolute; top: 52px; right: 0; bottom: 76px; width: 280px;
+  position: absolute; top: 52px; right: 0; bottom: 56px; width: 280px;
   z-index: 999; background: #faf9f7; border-left: 2px solid #d8d4cc;
   overflow-y: auto; transition: transform 0.3s;
   padding: 16px;
@@ -102,6 +126,8 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
   width: 12px; height: 12px; border-radius: 50%;
   flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
 }
+.legend-shape { width: 14px; height: 14px; flex-shrink: 0; }
+.shape-marker { background: none; border: none; }
 .legend-cross {
   width: 14px; height: 14px; border-radius: 50%;
   flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
@@ -147,6 +173,18 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 .family-chip-range { color: #8b7a66; }
 body.hide-chips .family-chip-icon { display: none; }
 
+/* Worksheet star (divIcon, centered on the marker itself — see markers.js:
+   buildWorksheetStar / hasWorksheetLink). Marks stops with a linked write-up,
+   as distinct from a bare place pin. Non-interactive, sits above the marker
+   pane by default so no z-index rules are needed. */
+.worksheet-star {
+  display: flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
+  font-size: 10px; line-height: 1; color: #fcd34d;
+  text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 1px #000;
+  pointer-events: none;
+}
+
 /* Custom popups */
 .leaflet-popup-content-wrapper {
   background: #faf9f7 !important; color: #3b3228 !important;
@@ -172,7 +210,69 @@ body.hide-chips .family-chip-icon { display: none; }
   font-size: 10px; padding: 2px 6px; border-radius: 3px;
   color: #fff; font-weight: 500;
 }
+.popup-family-tag-years { opacity: 0.85; font-weight: 400; }
+/* Expandable family tags share the base .popup-family-tag look but render as a
+   <button>, so reset border/font and add a click affordance cue. */
+.popup-family-tag-expandable {
+  border: none; font: inherit; cursor: pointer;
+}
+.popup-family-tag-expandable::after { content: ' \25BE'; }
+.popup-family-detail {
+  margin: 4px 0 8px; padding: 6px 8px;
+  background: #f5f0eb; border-left: 3px solid #d8d4cc;
+  border-radius: 0 4px 4px 0; font-size: 12px;
+}
+.popup-family-detail-summary { color: #4a4238; }
+.popup-address { color: #6b6255; font-size: 12px; margin-bottom: 8px; }
+.popup-reveal-btn {
+  display: inline-block; font-size: 12px; padding: 4px 10px;
+  border: 1px solid #d97706; border-radius: 4px; background: #fff;
+  color: #d97706; cursor: pointer; margin-bottom: 4px;
+}
+.popup-reveal-btn:hover { background: #fef3e2; }
 .popup-desc { color: #4a4238; margin: 8px 0; }
+.popup-photos { display: grid; grid-template-columns: repeat(4, 72px); gap: 4px; margin: 8px 0 2px; }
+.popup-photo img { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; display: block; border: 1px solid #d8d4cc; }
+.popup-photo:hover img { border-color: #d97706; }
+.popup-photo-credit { color: #8b7a66; font-size: 11px; font-style: italic; margin-bottom: 6px; }
+@media (max-width: 480px) {
+  .popup-photos { grid-template-columns: repeat(3, 72px); }
+}
+
+.photo-lightbox {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(15, 12, 8, 0.92);
+  align-items: center; justify-content: center;
+}
+.lightbox-figure { margin: 0; max-width: 90vw; text-align: center; }
+.lightbox-figure img {
+  max-width: 90vw; max-height: 82vh; object-fit: contain;
+  display: block; margin: 0 auto; border-radius: 4px;
+}
+.lightbox-figure figcaption { color: #e8e4dc; font-size: 14px; margin-top: 10px; line-height: 1.4; }
+.lightbox-counter { color: #b8ab98; margin-right: 8px; font-variant-numeric: tabular-nums; }
+.lightbox-credit { display: block; color: #b8ab98; font-size: 12px; font-style: italic; margin-top: 2px; }
+.lightbox-nav, .lightbox-close {
+  position: absolute; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.12); color: #fff;
+  border-radius: 50%; line-height: 1;
+}
+.lightbox-nav { top: 50%; transform: translateY(-50%); width: 52px; height: 52px; font-size: 34px; }
+.lightbox-prev { left: 16px; }
+.lightbox-next { right: 16px; }
+.lightbox-close { top: 14px; right: 16px; width: 40px; height: 40px; font-size: 20px; }
+.lightbox-nav:hover, .lightbox-close:hover { background: #d97706; }
+@media (max-width: 800px) {
+  .lightbox-nav { width: 44px; height: 44px; font-size: 28px; }
+  .lightbox-prev { left: 8px; }
+  .lightbox-next { right: 8px; }
+}
+@media (max-width: 480px) {
+  .lightbox-figure, .lightbox-figure img { max-width: 100vw; }
+  .lightbox-figure img { border-radius: 0; }
+  .lightbox-figure figcaption { font-size: 13px; padding: 0 16px; }
+  .lightbox-nav { background: rgba(0, 0, 0, 0.45); }
+}
 .popup-link {
   display: block; margin-top: 6px;
   color: #2563eb; text-decoration: none; font-size: 12px;
@@ -189,7 +289,7 @@ body.hide-chips .family-chip-icon { display: none; }
 </style>
 <style media="print">
 @media print {
-  .side-panel, .panel-toggle { display: none !important; }
+  .side-panel, .panel-toggle, .photo-lightbox { display: none !important; }
   #map { height: 100vh; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
@@ -204,15 +304,16 @@ body.hide-chips .family-chip-icon { display: none; }
 <div class="top-bar">
   <h1 id="mapTitle">History Map</h1>
   <span class="subtitle" id="mapSubtitle"></span>
+  <div class="lang-toggle" id="langToggle" style="display:none;"></div>
 </div>
 
 <div id="map"></div>
 
 <div class="timeline-bar">
-  <div class="timeline-caption">Drag to see events appear as they happened, or press &#9654; to play through the timeline automatically</div>
+  <div class="timeline-caption" id="timelineCaption" style="display:none;"></div>
   <div class="timeline-controls">
-    <button class="timeline-play-btn" id="timelinePlayBtn" title="Play through the timeline automatically">&#9654;</button>
-    <input type="range" id="timelineSlider" min="0" max="0" value="0" step="1" title="Drag to travel through time — markers appear as their date is reached">
+    <button type="button" class="timeline-play-btn" id="timelinePlayBtn">&#9654;</button>
+    <input type="range" id="timelineSlider" min="0" max="0" value="0" step="1">
     <span class="timeline-date" id="timelineDate"></span>
   </div>
 </div>
@@ -221,14 +322,28 @@ body.hide-chips .family-chip-icon { display: none; }
 
 <div class="side-panel" id="sidePanel">
   <div class="panel-section">
-    <h3>Tracks</h3>
+    <h3 id="tracksHeading">Tracks</h3>
     <div id="trackToggles"></div>
   </div>
 
   <div class="panel-section">
-    <h3>Legend</h3>
+    <h3 id="legendHeading">Legend</h3>
     <div id="legendItems"></div>
   </div>
+</div>
+
+<div class="photo-lightbox" id="photoLightbox" style="display:none;" onclick="if (event.target === this) closeLightbox()">
+  <button type="button" class="lightbox-close" onclick="closeLightbox()" aria-label="Close">&#10005;</button>
+  <button type="button" class="lightbox-nav lightbox-prev" id="lightboxPrev" onclick="stepLightbox(-1)" aria-label="Previous photo">&#8249;</button>
+  <figure class="lightbox-figure">
+    <img id="lightboxImg" alt="">
+    <figcaption>
+      <span class="lightbox-counter" id="lightboxCounter"></span>
+      <span id="lightboxCaption"></span>
+      <span class="lightbox-credit" id="lightboxCredit"></span>
+    </figcaption>
+  </figure>
+  <button type="button" class="lightbox-nav lightbox-next" id="lightboxNext" onclick="stepLightbox(1)" aria-label="Next photo">&#8250;</button>
 </div>
 
 <script type="application/json" id="mapData">
@@ -241,7 +356,8 @@ body.hide-chips .family-chip-icon { display: none; }
       14.3
     ],
     "defaultZoom": 8,
-    "generated": "2026-07-26",
+    "timelineCaption": "Drag to see events appear as they happened, or press \u25b6 to play through the timeline automatically",
+    "generated": "2026-10-17",
     "source": "henry_matola_timeline.md"
   },
   "tracks": {
@@ -600,7 +716,93 @@ body.hide-chips .family-chip-icon { display: none; }
 }
 </script>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+// ─── Languages ──────────────────────────────────────────────────────
+// Display-text fields in the data may be a plain string or { en: "…", sl: "…" }.
+// Translations are stored in the data, not fetched — switching only changes
+// which one is shown. See SCHEMA.md "Languages".
+
+let _lang = 'en';
+
+const UI_STRINGS = {
+  en: {
+    tracks: 'Tracks', legend: 'Legend', showDetails: 'Show details →', hospital: 'Hospital stay',
+    playTip: 'Play through the timeline automatically',
+    sliderTip: 'Drag to travel through time — markers appear as their date is reached'
+  },
+  sl: {
+    tracks: 'Sloji', legend: 'Legenda', showDetails: 'Pokaži podrobnosti →', hospital: 'Bivanje v bolnišnici',
+    playTip: 'Samodejno predvajaj časovni trak',
+    sliderTip: 'Povlecite za premik skozi čas — oznake se prikažejo, ko je dosežen njihov datum'
+  }
+};
+
+const LANGUAGE_LABELS = { en: 'EN', sl: 'SL' };
+
+function t(value) {
+  if (value && typeof value === 'object') return value[_lang] || value.en || '';
+  return value || '';
+}
+
+// Data text is plain text, never HTML — escape it before it goes into markup.
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// A value passed as a string argument inside an inline onclick="…" attribute.
+function jsArg(value) {
+  return esc(JSON.stringify(String(value)));
+}
+
+function uiText(key) {
+  return (UI_STRINGS[_lang] || UI_STRINGS.en)[key] || UI_STRINGS.en[key];
+}
+
+function mapLanguages() {
+  return (DATA.meta && DATA.meta.languages) || ['en'];
+}
+
+// URL ?lang= wins (so a shared link opens in that language), then the viewer's
+// last choice, then the map's first listed language.
+function initLanguage() {
+  const langs = mapLanguages();
+  const fromUrl = new URLSearchParams(window.location.search).get('lang');
+  let saved = null;
+  try { saved = localStorage.getItem('historyMapLang'); } catch (e) {}
+  _lang = [fromUrl, saved].find(l => langs.includes(l)) || langs[0];
+  document.documentElement.lang = _lang;
+  buildLanguageToggle();
+}
+
+function buildLanguageToggle() {
+  const el = document.getElementById('langToggle');
+  const langs = mapLanguages();
+  if (langs.length < 2) return;
+  el.innerHTML = langs.map(l =>
+    `<button type="button" class="lang-btn" data-lang="${esc(l)}" onclick="setLanguage(${jsArg(l)})">${esc(LANGUAGE_LABELS[l] || l.toUpperCase())}</button>`
+  ).join('');
+  el.style.display = 'flex';
+  markActiveLanguage();
+}
+
+function markActiveLanguage() {
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === _lang));
+}
+
+function setLanguage(lang) {
+  if (lang === _lang) return;
+  _lang = lang;
+  try { localStorage.setItem('historyMapLang', lang); } catch (e) {}
+  document.documentElement.lang = lang;
+  markActiveLanguage();
+  applyLanguage();
+}
+
+</script>
 <script>
 // ─── Marker construction ───────────────────────────────────────────
 // Whether a track's stops get their color from `statuses` (a person/subject
@@ -650,8 +852,8 @@ function buildOccupancyChip(stop) {
 
   const lines = names.map(name => {
     const { earliest, latest } = families[name];
-    const range = earliest === latest ? earliest.date : `${earliest.date}–${latest.date}`;
-    return `<div class="family-chip-line"><strong>${name}</strong> <span class="family-chip-range">(${range})</span></div>`;
+    const range = earliest === latest ? t(earliest.date) : `${t(earliest.date)}–${t(latest.date)}`;
+    return `<div class="family-chip-line"><strong>${esc(name)}</strong> <span class="family-chip-range">(${esc(range)})</span></div>`;
   });
   return `<div class="family-chip-inner">${lines.join('')}</div>`;
 }
@@ -659,14 +861,17 @@ function buildOccupancyChip(stop) {
 // Non-interactive divIcon marker carrying the chip HTML, positioned just off
 // the stop's own marker. Kept as a separate map layer (not bindTooltip) so it
 // doesn't conflict with the marker's own hover-name tooltip.
-function buildChipMarker(stop, chipHtml) {
-  const icon = L.divIcon({
+function buildChipIcon(chipHtml) {
+  return L.divIcon({
     className: 'family-chip-icon',
     html: chipHtml,
     iconSize: null,
     iconAnchor: [-14, 10]
   });
-  return L.marker([stop.lat, stop.lng], { icon, interactive: false });
+}
+
+function buildChipMarker(stop, chipHtml) {
+  return L.marker([stop.lat, stop.lng], { icon: buildChipIcon(chipHtml), interactive: false });
 }
 
 function buildCircleMarker(stop) {
@@ -681,8 +886,45 @@ function buildCircleMarker(stop) {
     opacity: 1,
     fillOpacity: stop.highlight ? 0.9 : 0.85
   });
-  marker.bindPopup(buildPopup(stop));
-  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -radius] });
+  marker.bindPopup(() => buildPopup(stop));
+  marker.bindTooltip(() => esc(t(stop.name)), { permanent: false, direction: 'top', offset: [0, -radius] });
+  return marker;
+}
+
+// Inline SVG for a non-circle track shape ("square", "diamond", "triangle"),
+// sized `size` px square. Shared by the map markers and the legend swatches.
+function shapeSvg(shape, size, fill, stroke, strokeWidth, fillOpacity) {
+  const p = strokeWidth / 2;
+  const s = size - p;
+  const m = size / 2;
+  let body;
+  if (shape === 'square') {
+    body = `<rect x="${p}" y="${p}" width="${s - p}" height="${s - p}"/>`;
+  } else if (shape === 'diamond') {
+    body = `<polygon points="${m},${p} ${s},${m} ${m},${s} ${p},${m}"/>`;
+  } else {
+    body = `<polygon points="${m},${p} ${s},${s} ${p},${s}"/>`;
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block">` +
+    `<g fill="${esc(fill)}" fill-opacity="${fillOpacity}" stroke="${esc(stroke)}" stroke-width="${strokeWidth}" stroke-linejoin="round">${body}</g></svg>`;
+}
+
+// Same styling rules as buildCircleMarker (incl. `highlight`), drawn as a divIcon.
+function buildShapeMarker(stop, shape) {
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const radius = (track && track.radius) || 7;
+  const size = radius * 2 + 4;
+  const svg = shapeSvg(
+    shape, size,
+    stop.highlight ? '#b45309' : resolveStopColor(stop),
+    stop.highlight ? '#78350f' : '#fff',
+    stop.highlight ? 3 : 2,
+    stop.highlight ? 0.9 : 0.85
+  );
+  const icon = L.divIcon({ className: 'shape-marker', html: svg, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  const marker = L.marker([stop.lat, stop.lng], { icon });
+  marker.bindPopup(() => buildPopup(stop));
+  marker.bindTooltip(() => esc(t(stop.name)), { permanent: false, direction: 'top', offset: [0, -size / 2] });
   return marker;
 }
 
@@ -690,18 +932,46 @@ function buildHospitalMarker(stop) {
   const color = resolveStopColor(stop);
   const icon = L.divIcon({
     className: '',
-    html: `<div class="hospital-marker" style="background:${color}; width:18px; height:18px;"></div>`,
+    html: `<div class="hospital-marker" style="background:${esc(color)}; width:18px; height:18px;"></div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9]
   });
   const marker = L.marker([stop.lat, stop.lng], { icon });
-  marker.bindPopup(buildPopup(stop));
-  marker.bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -9] });
+  marker.bindPopup(() => buildPopup(stop));
+  marker.bindTooltip(() => esc(t(stop.name)), { permanent: false, direction: 'top', offset: [0, -9] });
   return marker;
 }
 
 function buildMarkerForStop(stop) {
-  return stop.hospital ? buildHospitalMarker(stop) : buildCircleMarker(stop);
+  if (stop.hospital) return buildHospitalMarker(stop);
+  const track = DATA.tracks && DATA.tracks[stop.track];
+  const shape = track && track.shape;
+  return shape && shape !== 'circle' ? buildShapeMarker(stop, shape) : buildCircleMarker(stop);
+}
+
+// True when a stop has at least one outbound link into a project's worksheet/
+// write-up directory — used to badge markers that have a documented "family
+// sheet" behind them, as distinct from a bare place pin with no write-up.
+// Matches "worksheets/" anywhere in the href, not just with a leading slash —
+// a deployed site may rewrite "../worksheets/x.html" to "worksheets/x.html"
+// (no leading slash) if index.html moves to the repo root, so anchoring on
+// "/worksheets/" would silently miss those.
+function hasWorksheetLink(stop) {
+  return !!(stop.links || []).some(link => (link.href || '').includes('worksheets/'));
+}
+
+// Small non-interactive star, centered exactly on the stop's own marker (not
+// offset like the family/date chip) so it reads as a property of that one
+// marker rather than a separate label. `interactive: false` lets clicks and
+// hover pass through to the marker beneath it.
+function buildWorksheetStar(stop) {
+  const icon = L.divIcon({
+    className: '',
+    html: '<div class="worksheet-star">&#9733;</div>',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7]
+  });
+  return L.marker([stop.lat, stop.lng], { icon, interactive: false });
 }
 
 // Faint, non-interactive placeholder for a stop the timeline slider hasn't reached yet.
@@ -721,30 +991,91 @@ function buildGhostMarker(stop) {
 </script>
 <script>
 // ─── Popup construction ─────────────────────────────────────────────
+
+// Coerce a families[] entry into object form. A plain string becomes
+// {name: f} — no summary, so it always renders as a static tag.
+function normalizeFamily(f) {
+  return typeof f === 'string' ? { name: f } : f;
+}
+
+// Shared show/hide toggle for any popup detail block — used both by
+// expandable per-family summaries and by gated stops' "Show details" button.
+// Exposed as a plain global function since popup HTML is injected via
+// Leaflet's bindPopup and its onclick attributes execute in global scope.
+function togglePopupDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hidden = el.style.display === 'none' || !el.style.display;
+  el.style.display = hidden ? 'block' : 'none';
+}
+
 function buildPopup(stop) {
-  let html = `<div class="popup-title">${stop.name}</div>`;
+  const gated = !!stop.gated;
+
+  let html = `<div class="popup-title">${esc(t(stop.name))}</div>`;
+  if (gated && stop.fullPath) {
+    html += `<div class="popup-address">${esc(t(stop.fullPath))}</div>`;
+  }
 
   const track = DATA.tracks && DATA.tracks[stop.track];
   const statusKey = trackColorsByStatus(stop) ? (stop.status || 'with-unit') : null;
   const status = statusKey && DATA.statuses && DATA.statuses[statusKey];
   const badgeColor = resolveStopColor(stop);
-  const badgeLabel = status ? status.label : (track ? track.label : stop.track);
-  html += `<span class="popup-badge" style="background:${badgeColor}">${badgeLabel}</span>`;
+  const badgeLabel = status ? t(status.label) : (track ? t(track.label) : stop.track);
 
-  // Flat family tags — for stops with no per-event `family` data yet (see SCHEMA.md
-  // "Family/date chips"); a project with no families concept just omits stop.families.
+  let details = `<span class="popup-badge" style="background:${esc(badgeColor)}">${esc(badgeLabel)}</span>`;
+
+  // Family tags — plain strings render as static tags (see SCHEMA.md "Family/date
+  // chips"); objects with a `summary` render as expandable tags (see "Family tags").
+  // A project with no families concept just omits stop.families.
   if (stop.families && stop.families.length) {
-    html += '<div class="popup-families">';
-    stop.families.forEach(f => {
-      const color = (DATA.familyColors && DATA.familyColors[f]) || '#666';
-      html += `<span class="popup-family-tag" style="background:${color}">${f}</span>`;
+    details += '<div class="popup-families">';
+    stop.families.forEach((raw, i) => {
+      const f = normalizeFamily(raw);
+      const color = (DATA.familyColors && DATA.familyColors[f.name]) || '#666';
+      const label = f.years ? `${esc(f.name)} <span class="popup-family-tag-years">${esc(t(f.years))}</span>` : esc(f.name);
+      if (f.summary) {
+        const detailId = `popup-family-detail-${stop.id}-${i}`;
+        details += `<button type="button" class="popup-family-tag popup-family-tag-expandable" style="background:${esc(color)}" onclick="togglePopupDetail(${jsArg(detailId)})">${label}</button>`;
+      } else {
+        details += `<span class="popup-family-tag" style="background:${esc(color)}">${label}</span>`;
+      }
     });
-    html += '</div>';
+    details += '</div>';
+
+    // Detail blocks for expandable families, one per family with a summary,
+    // each independently toggled by its own tag above.
+    stop.families.forEach((raw, i) => {
+      const f = normalizeFamily(raw);
+      if (!f.summary) return;
+      const detailId = `popup-family-detail-${stop.id}-${i}`;
+      details += `<div id="${esc(detailId)}" class="popup-family-detail" style="display:none;">`;
+      details += `<div class="popup-family-detail-summary">${esc(t(f.summary))}</div>`;
+      (f.links || []).forEach(link => {
+        details += `<a class="popup-link" href="${esc(link.href)}" target="_blank" rel="noopener">${esc(t(link.label))}</a>`;
+      });
+      details += '</div>';
+    });
+  }
+
+  // Thumbnail strip, above the prose so it's visible without scrolling; each thumb
+  // opens the in-page photo viewer (lightbox.js); Cmd/Ctrl-click still follows the
+  // href to a new tab. Fixed thumb dimensions keep the popup
+  // from resizing (and re-panning) as images load.
+  if (stop.photos && stop.photos.length) {
+    details += '<div class="popup-photos">';
+    stop.photos.forEach((p, i) => {
+      details += `<a class="popup-photo" href="${esc(p.src)}" target="_blank" title="${esc(t(p.caption))}" onclick="return openLightbox(event, ${jsArg(stop.id)}, ${i})">` +
+        `<img src="${esc(p.thumb || p.src)}" alt="${esc(t(p.caption))}" width="72" height="72" loading="lazy"></a>`;
+    });
+    details += '</div>';
+    const credits = [...new Set(stop.photos.map(p => t(p.credit)).filter(Boolean))];
+    if (credits.length) details += `<div class="popup-photo-credit">${esc(credits.join(' · '))}</div>`;
   }
 
   // Static prose, for stops without a dated events[] yet.
   if (stop.description) {
-    html += `<div class="popup-desc">${stop.description}</div>`;
+    details += `<div class="popup-desc">${esc(t(stop.description))}</div>`;
   }
 
   const events = (stop.events || []).slice().sort((a, b) => {
@@ -752,28 +1083,107 @@ function buildPopup(stop) {
   });
 
   if (events.length) {
-    html += '<ul class="popup-events">';
+    details += '<ul class="popup-events">';
     events.forEach(ev => {
-      html += '<li class="popup-event">';
-      html += `<div class="popup-event-date">${ev.date}</div>`;
-      if (ev.campaign) html += `<div class="popup-event-campaign">${ev.campaign}</div>`;
-      html += `<div class="popup-event-text">${ev.text}</div>`;
-      if (ev.source) html += `<div class="popup-event-source">${ev.source}</div>`;
-      html += '</li>';
+      details += '<li class="popup-event">';
+      details += `<div class="popup-event-date">${esc(t(ev.date))}</div>`;
+      if (ev.campaign) details += `<div class="popup-event-campaign">${esc(t(ev.campaign))}</div>`;
+      details += `<div class="popup-event-text">${esc(t(ev.text))}</div>`;
+      if (ev.source) details += `<div class="popup-event-source">${esc(t(ev.source))}</div>`;
+      details += '</li>';
     });
-    html += '</ul>';
+    details += '</ul>';
   }
 
   // Generic outbound links (e.g. gary-research's per-person worksheet writeups,
   // or a link back to a related static page like sp-houses.html).
   if (stop.links && stop.links.length) {
     stop.links.forEach(link => {
-      html += `<a class="popup-link" href="${link.href}" target="_blank">${link.label}</a>`;
+      details += `<a class="popup-link" href="${esc(link.href)}" target="_blank" rel="noopener">${esc(t(link.label))}</a>`;
     });
+  }
+
+  if (gated) {
+    const detailsId = `popup-details-${stop.id}`;
+    html += `<button type="button" class="popup-reveal-btn" onclick="togglePopupDetail(${jsArg(detailsId)}); this.style.display='none';">${esc(uiText('showDetails'))}</button>`;
+    html += `<div id="${esc(detailsId)}" class="popup-details" style="display:none;">${details}</div>`;
+  } else {
+    html += details;
   }
 
   return html;
 }
+
+</script>
+<script>
+// ─── Photo viewer ───────────────────────────────────────────────────
+// Steps through one stop's photos over the map. Opened from the popup
+// thumbnails (popup.js); the #photoLightbox markup lives in index.html.
+
+let _lightboxPhotos = [];
+let _lightboxIndex = 0;
+let _lightboxTouchX = null;
+
+function openLightbox(event, stopId, index) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey) return true;
+  const stop = (DATA.stops || []).find(s => s.id === stopId);
+  if (!stop || !stop.photos) return true;
+  _lightboxPhotos = stop.photos;
+  const multiple = _lightboxPhotos.length > 1;
+  document.getElementById('lightboxPrev').style.display = multiple ? '' : 'none';
+  document.getElementById('lightboxNext').style.display = multiple ? '' : 'none';
+  document.getElementById('photoLightbox').style.display = 'flex';
+  showLightboxPhoto(index);
+  return false;
+}
+
+function showLightboxPhoto(i) {
+  const n = _lightboxPhotos.length;
+  _lightboxIndex = (i + n) % n;
+  const p = _lightboxPhotos[_lightboxIndex];
+  const img = document.getElementById('lightboxImg');
+  img.src = p.src;
+  img.alt = t(p.caption);
+  document.getElementById('lightboxCaption').textContent = t(p.caption);
+  document.getElementById('lightboxCredit').textContent = t(p.credit);
+  document.getElementById('lightboxCounter').textContent = n > 1 ? `${_lightboxIndex + 1} / ${n}` : '';
+  if (n > 1) new Image().src = _lightboxPhotos[(_lightboxIndex + 1) % n].src;
+}
+
+function stepLightbox(delta) {
+  showLightboxPhoto(_lightboxIndex + delta);
+}
+
+function closeLightbox() {
+  document.getElementById('photoLightbox').style.display = 'none';
+  document.getElementById('lightboxImg').removeAttribute('src');
+}
+
+function lightboxIsOpen() {
+  return document.getElementById('photoLightbox').style.display !== 'none';
+}
+
+// Capture phase, so Leaflet's own arrow-key panning doesn't also fire.
+document.addEventListener('keydown', e => {
+  if (!lightboxIsOpen()) return;
+  if (e.key === 'Escape') closeLightbox();
+  else if (e.key === 'ArrowLeft') stepLightbox(-1);
+  else if (e.key === 'ArrowRight') stepLightbox(1);
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+
+document.getElementById('photoLightbox').addEventListener('touchstart', e => {
+  _lightboxTouchX = e.touches[0].clientX;
+}, { passive: true });
+
+document.getElementById('photoLightbox').addEventListener('touchend', e => {
+  if (_lightboxTouchX === null || _lightboxPhotos.length < 2) return;
+  const dx = e.changedTouches[0].clientX - _lightboxTouchX;
+  _lightboxTouchX = null;
+  if (Math.abs(dx) > 40) stepLightbox(dx < 0 ? 1 : -1);
+});
 
 </script>
 <script>
@@ -784,7 +1194,7 @@ function buildLegend() {
 
   if (DATA.statuses) {
     Object.values(DATA.statuses).forEach(s => {
-      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.label}</div>`;
+      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${esc(s.color)}"></div>${esc(t(s.label))}</div>`;
     });
   }
 
@@ -794,12 +1204,15 @@ function buildLegend() {
   // gary-research's that has several peer tracks and no statuses at all.
   Object.entries(DATA.tracks || {}).forEach(([key, track]) => {
     if (trackUsesOwnColor(key, track)) {
-      legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${track.color}"></div>${track.label}</div>`;
+      const swatch = track.shape && track.shape !== 'circle'
+        ? `<div class="legend-shape">${shapeSvg(track.shape, 14, track.color, 'rgba(0,0,0,0.25)', 1, 1)}</div>`
+        : `<div class="legend-dot" style="background:${esc(track.color)}"></div>`;
+      legendEl.innerHTML += `<div class="legend-item">${swatch}${esc(t(track.label))}</div>`;
     }
   });
 
   if ((DATA.stops || []).some(s => s.hospital)) {
-    legendEl.innerHTML += `<div class="legend-item"><div class="legend-cross" style="background:#555"></div>Hospital stay</div>`;
+    legendEl.innerHTML += `<div class="legend-item"><div class="legend-cross" style="background:#555"></div>${uiText('hospital')}</div>`;
   }
 }
 
@@ -808,10 +1221,9 @@ function buildTrackToggles() {
   el.innerHTML = '';
   if (!DATA.tracks) return;
   Object.keys(DATA.tracks).forEach(key => {
-    const t = DATA.tracks[key];
     const label = document.createElement('label');
     label.className = 'layer-toggle';
-    label.innerHTML = `<input type="checkbox" checked data-track="${key}"> ${t.label}`;
+    label.innerHTML = `<input type="checkbox" ${trackVisible[key] === false ? '' : 'checked'} data-track="${esc(key)}"> ${esc(t(DATA.tracks[key].label))}`;
     label.querySelector('input').addEventListener('change', (e) => {
       toggleTrack(key, e.target.checked);
     });
@@ -831,15 +1243,30 @@ let playInterval = null;
 
 async function loadData() {
   // Prefer inline data (works on file://). Fall back to fetch for live editing via http://.
-  const inlineEl = document.getElementById('mapData');
-  const inlineText = inlineEl ? inlineEl.textContent.trim() : '';
-  if (inlineText && inlineText.startsWith('{')) {
-    DATA = JSON.parse(inlineText);
-  } else {
-    const resp = await fetch('data.json');
-    DATA = await resp.json();
+  try {
+    const inlineEl = document.getElementById('mapData');
+    const inlineText = inlineEl ? inlineEl.textContent.trim() : '';
+    if (inlineText && inlineText.startsWith('{')) {
+      DATA = JSON.parse(inlineText);
+    } else {
+      const resp = await fetch('data.json');
+      if (!resp.ok) throw new Error(`data.json: HTTP ${resp.status}`);
+      DATA = await resp.json();
+    }
+  } catch (err) {
+    showLoadError(err);
+    return;
   }
   buildMap();
+}
+
+// A broken data file should say so on screen, not leave a blank page.
+function showLoadError(err) {
+  console.error(err);
+  const el = document.getElementById('map');
+  el.classList.add('map-load-error');
+  el.textContent = `Could not load the map data: ${err.message}`;
+  document.querySelector('.timeline-bar').style.display = 'none';
 }
 
 // events[] isn't guaranteed sorted by the schema (popup.js sorts defensively too),
@@ -847,13 +1274,53 @@ async function loadData() {
 // no events[] at all (e.g. gary-research places with only a static description) —
 // null means "not date-gated," handled in applyVisibility below.
 function stopEarliestDateSort(stop) {
-  if (!stop.events || !stop.events.length) return null;
-  return stop.events.map(e => e.dateSort).sort()[0];
+  const dates = (stop.events || []).map(e => e.dateSort).filter(Boolean).sort();
+  return dates.length ? dates[0] : null;
+}
+
+function applyHeadings() {
+  document.getElementById('mapTitle').textContent = t(DATA.meta && DATA.meta.title) || 'History Map';
+  document.getElementById('mapSubtitle').textContent = t(DATA.meta && DATA.meta.subtitle);
+  document.getElementById('tracksHeading').textContent = uiText('tracks');
+  document.getElementById('legendHeading').textContent = uiText('legend');
+  applyTimelineText();
+}
+
+// Hover tips + accessible names for the timeline controls, and the optional
+// map-specific caption above them (meta.timelineCaption).
+function applyTimelineText() {
+  const playBtn = document.getElementById('timelinePlayBtn');
+  const slider = document.getElementById('timelineSlider');
+  playBtn.title = uiText('playTip');
+  playBtn.setAttribute('aria-label', uiText('playTip'));
+  slider.title = uiText('sliderTip');
+  slider.setAttribute('aria-label', uiText('sliderTip'));
+
+  const caption = t(DATA.meta && DATA.meta.timelineCaption);
+  const captionEl = document.getElementById('timelineCaption');
+  captionEl.textContent = caption;
+  captionEl.style.display = caption ? '' : 'none';
+  document.body.classList.toggle('has-timeline-caption', !!caption);
+}
+
+// Re-renders everything that shows data text. Popups and tooltips are bound
+// as functions (markers.js), so they pick up the new language on next open.
+function applyLanguage() {
+  applyHeadings();
+  buildLegend();
+  buildTrackToggles();
+  map.closePopup();
+  allStops.forEach(entry => {
+    if (entry.chipMarker) entry.chipMarker.setIcon(buildChipIcon(buildOccupancyChip(entry.stop)));
+  });
+  if (state.currentDateSort) {
+    document.getElementById('timelineDate').textContent = formatDateSort(state.currentDateSort);
+  }
 }
 
 function buildMap() {
-  document.getElementById('mapTitle').textContent = (DATA.meta && DATA.meta.title) || 'History Map';
-  document.getElementById('mapSubtitle').textContent = (DATA.meta && DATA.meta.subtitle) || '';
+  initLanguage();
+  applyHeadings();
 
   const center = (DATA.meta && DATA.meta.defaultCenter) || [0, 0];
   const zoom = (DATA.meta && DATA.meta.defaultZoom) || 6;
@@ -871,7 +1338,7 @@ function buildMap() {
   (DATA.stops || []).forEach(stop => {
     const trackKey = stop.track || 'default';
     if (!(trackKey in trackVisible)) trackVisible[trackKey] = true;
-    const chipHtml = buildOccupancyChip(stop);
+    const chipHtml = stop.gated ? null : buildOccupancyChip(stop);
     allStops.push({
       stop,
       track: trackKey,
@@ -879,6 +1346,7 @@ function buildMap() {
       revealedMarker: buildMarkerForStop(stop),
       ghostMarker: buildGhostMarker(stop),
       chipMarker: chipHtml ? buildChipMarker(stop, chipHtml) : null,
+      worksheetStar: hasWorksheetLink(stop) ? buildWorksheetStar(stop) : null,
       currentlyShownAs: null
     });
   });
@@ -906,20 +1374,23 @@ function setupChipVisibility() {
 // per stop: hidden (track off), ghost (not yet reached), revealed (fully shown).
 // A stop with no dated events (firstDateSort === null) is never date-gated —
 // it's revealed whenever its track is visible, same as before the slider existed.
+// With no dates on the whole map (currentDateSort === null) nothing is gated.
 function applyVisibility() {
   allStops.forEach(entry => {
     const wantState = !trackVisible[entry.track] ? null
-      : entry.firstDateSort === null ? 'revealed'
+      : entry.firstDateSort === null || state.currentDateSort === null ? 'revealed'
       : entry.firstDateSort <= state.currentDateSort ? 'revealed'
       : 'ghost';
     if (entry.currentlyShownAs === wantState) return;
     if (entry.currentlyShownAs) {
       map.removeLayer(entry.currentlyShownAs === 'ghost' ? entry.ghostMarker : entry.revealedMarker);
       if (entry.currentlyShownAs === 'revealed' && entry.chipMarker) map.removeLayer(entry.chipMarker);
+      if (entry.currentlyShownAs === 'revealed' && entry.worksheetStar) map.removeLayer(entry.worksheetStar);
     }
     if (wantState) {
       (wantState === 'ghost' ? entry.ghostMarker : entry.revealedMarker).addTo(map);
       if (wantState === 'revealed' && entry.chipMarker) entry.chipMarker.addTo(map);
+      if (wantState === 'revealed' && entry.worksheetStar) entry.worksheetStar.addTo(map);
     }
     entry.currentlyShownAs = wantState;
   });
@@ -934,18 +1405,26 @@ function toggleTrack(trackKey, visible) {
 // parses as UTC midnight, which can display as the previous day west of Greenwich.
 function formatDateSort(dateSort) {
   const [y, m, d] = dateSort.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+  return new Date(y, m - 1, d).toLocaleDateString(_lang, {
     year: 'numeric', month: 'long', day: 'numeric'
   });
 }
 
 function setupTimeline() {
   const uniqueDates = Array.from(new Set(
-    allStops.flatMap(entry => (entry.stop.events || []).map(e => e.dateSort))
+    allStops.flatMap(entry => (entry.stop.events || []).map(e => e.dateSort).filter(Boolean))
   )).sort();
 
   const slider = document.getElementById('timelineSlider');
   const dateLabel = document.getElementById('timelineDate');
+
+  // No dated events anywhere: no timeline, every stop shown.
+  if (!uniqueDates.length) {
+    document.querySelector('.timeline-bar').style.display = 'none';
+    document.body.classList.remove('has-timeline-caption');
+    applyVisibility();
+    return;
+  }
 
   slider.min = 0;
   slider.max = uniqueDates.length - 1;
